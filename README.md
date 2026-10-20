@@ -4,7 +4,7 @@ Aplicación web para compartir ubicaciones en tiempo real, con panel de administ
 
 ## Ejecutar en local
 
-1. Instala Node.js 18 o superior.
+1. Instala Node.js 22 o superior (el servidor usa Node.js 18+, pero Capacitor 8 requiere Node.js 22+).
 2. En la carpeta del proyecto, ejecuta `npm install`.
 3. Ejecuta `npm start` (equivale a `node app.js`).
 4. Abre `http://localhost:3000` y acepta el permiso de ubicación del navegador.
@@ -60,11 +60,13 @@ El frontend, el panel y Socket.IO se sirven desde el mismo origen. Fuera de loca
 
 ## Aplicación móvil Capacitor y rastreo en segundo plano
 
-La app nativa usa un servicio de ubicación propio en Android y Core Location en iOS. En [public/native-config.js](./public/native-config.js), configura `window.UBICACIONGPS_BACKEND_URL` con el origen HTTPS real del backend (por ejemplo, `https://mi-servicio.onrender.com`, sin `/` final). No uses una IP pública con HTTP: el tráfico contiene coordenadas precisas y el código nativo rechaza endpoints que no sean HTTPS. Hasta configurar una URL HTTPS, el rastreo móvil permanece desactivado; el sitio web sigue usando su comportamiento normal. Capacitor 8 requiere Node.js 22 o superior para sincronizar y compilar los proyectos móviles.
+El rastreo nativo usa `@bglocation/capacitor`; el navegador normal conserva `navigator.geolocation.watchPosition`. El bundle del plugin se actualiza con `npm run build:frontend`; `npm run cap:sync` lo compila y sincroniza con los proyectos nativos. La configuración del backend móvil está en [public/native-config.js](./public/native-config.js) y debe ser el origen HTTPS del servidor, sin `/` final. El valor configurado actualmente es `https://ubicaciongps.onrender.com`.
 
-Al iniciar la app móvil se muestra una confirmación antes de pedir el permiso de ubicación permanente. En Android 11 o superior, el sistema requiere que el usuario habilite **Permitir siempre** desde los ajustes de la app; Android también muestra una notificación permanente mientras el servicio está activo. En iOS se solicitan permisos Always y el modo de ubicación en segundo plano. El usuario puede detener el rastreo desde el botón de la app. Las decisiones del sistema operativo, el cierre forzado, la revocación de permisos, la batería y la conexión pueden interrumpir las actualizaciones; no se puede garantizar rastreo después de forzar el cierre.
+Al iniciar el rastreo, la app solicita primero el permiso de ubicación durante el uso y luego el permiso en segundo plano. En Android 11 o superior, el usuario debe habilitar **Permitir siempre** desde los ajustes de la app. Android muestra una notificación permanente mientras el servicio está activo. En iOS, se solicita autorización Always y se usa el modo de ubicación en segundo plano declarado en `Info.plist`. El botón permite detener el rastreo. El cierre forzado, la revocación de permisos, los ajustes de batería y la conectividad pueden interrumpir las actualizaciones; ningún sistema operativo garantiza el rastreo tras forzar el cierre.
 
-El endpoint `POST /update-location` valida `deviceId`, `lat` y `lng`, actualiza el mismo historial en memoria, emite los eventos de ubicación y evalúa las geocercas existentes. El identificador aleatorio del dispositivo se conserva localmente para mantener la identidad del usuario al reconectar.
+El plugin envía mediante HTTPS un POST a `/update-location`, con las coordenadas en `location.latitude` y `location.longitude` y el ID estable del dispositivo en la cabecera `X-Device-Id`. El servidor también conserva compatibilidad con el formato anterior `deviceId`, `lat` y `lng`; ambos actualizan el mismo historial, emiten los eventos y evalúan las geocercas. La app conserva el ID del dispositivo en almacenamiento local.
+
+**Limitación de licencia:** `@bglocation/capacitor` es un POC bajo Elastic License 2.0 y, sin clave de licencia válida del proveedor, aplica un período de prueba limitado (30 minutos de rastreo y una hora de espera). Revisa [la licencia incluida](./public/bglocation-license.md) y las condiciones del proveedor antes de distribuir la app o usarla como servicio. El plugin no debe considerarse una solución de producción fiable sin resolver esta limitación.
 
 ### Compilar y probar Android
 
@@ -72,12 +74,12 @@ Instala Android Studio, el Android SDK y un JDK compatible; habilita la depuraci
 
 ```bash
 npm install
-npx cap sync android
+npm run cap:sync
 npx cap run android
 ```
 
-También puedes abrir el proyecto `android` en Android Studio y ejecutar la app en el dispositivo. `npx cap run android` requiere que Android SDK/ADB y Java estén instalados y configurados en `PATH`.
+También puedes ejecutar `npx cap sync` después de `npm run build:frontend`, o abrir el proyecto `android` en Android Studio y ejecutar la app en el dispositivo. `npx cap run android` requiere que Android SDK/ADB y Java estén instalados y configurados en `PATH`.
 
 ### iOS
 
-La carpeta `ios` queda preparada, pero compilar o ejecutar iOS requiere macOS, Xcode y un dispositivo/certificado Apple; no se puede compilar desde Windows. En un Mac, ejecuta `npm install`, `npx cap sync ios` y `npx cap run ios`.
+La carpeta `ios` queda preparada, pero compilar o ejecutar iOS requiere macOS, Xcode y un dispositivo/certificado Apple; no se puede compilar desde Windows. En un Mac, ejecuta `npm install`, `npm run cap:sync` y `npx cap run ios`.

@@ -6,162 +6,272 @@
     <title>UbicacionGPS | Administración</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <style>
+        :root {
+            color-scheme: dark;
+            --background: #0b132b;
+            --panel: #1c2541;
+            --panel-raised: #24304f;
+            --cyan: #00e5ff;
+            --text: #fff;
+            --muted: #a0aab2;
+            --red: #ff0033;
+            --line: rgba(160, 170, 178, 0.18);
+        }
+
         * {
             box-sizing: border-box;
             font-family: Arial, Helvetica, sans-serif !important;
         }
 
         html,
-        body,
-        #map {
+        body {
             width: 100%;
             height: 100%;
             margin: 0;
         }
 
         body {
-            background: #f4f4f4;
-            color: #263238;
+            overflow: hidden;
+            background: var(--background);
+            color: var(--text);
         }
 
         #map {
             position: fixed;
             inset: 0;
             z-index: 0;
+            background: var(--background);
+        }
+
+        .top-bar {
+            position: fixed;
+            inset: 0 0 auto;
+            z-index: 1100;
+            display: flex;
+            height: 68px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 0 22px;
+            border-bottom: 1px solid var(--line);
+            background: rgba(11, 19, 43, 0.97);
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.26);
+        }
+
+        .top-bar-left,
+        .top-bar-right,
+        .panel-actions,
+        .user-title,
+        .user-actions,
+        .connection-indicator {
+            display: flex;
+            align-items: center;
+        }
+
+        .top-bar-left {
+            min-width: 0;
+            gap: 18px;
+        }
+
+        .back-link {
+            padding: 9px 12px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            color: var(--muted);
+            font-size: 13px;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .back-link:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+        }
+
+        .top-bar h1 {
+            margin: 0;
+            font-size: 18px;
+            letter-spacing: 0.04em;
+        }
+
+        .top-bar-right {
+            gap: 20px;
+            color: var(--muted);
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .connection-indicator {
+            gap: 8px;
+            color: var(--cyan);
+            font-weight: 700;
+        }
+
+        .connection-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ffb300;
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        .connection-indicator.connected .connection-dot {
+            background: #00e676;
+        }
+
+        .connection-indicator.disconnected {
+            color: #ff6b81;
+        }
+
+        .connection-indicator.disconnected .connection-dot {
+            background: var(--red);
+        }
+
+        .dashboard {
+            position: fixed;
+            inset: 84px 18px 18px;
+            z-index: 1000;
+            display: grid;
+            grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+            grid-template-rows: 100%;
+            gap: 18px;
+            pointer-events: none;
+        }
+
+        .admin-panel,
+        .stats-grid {
+            pointer-events: auto;
         }
 
         .admin-panel {
-            position: fixed;
-            top: 14px;
-            bottom: 14px;
-            left: 14px;
-            z-index: 1000;
             display: flex;
-            width: min(380px, calc(100vw - 28px));
+            min-height: 0;
             flex-direction: column;
             padding: 16px;
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.95);
-            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: rgba(28, 37, 65, 0.96);
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.36);
+            backdrop-filter: blur(10px);
         }
 
-        .panel-header {
-            flex: 0 0 auto;
-        }
-
-        .panel-header h1 {
-            margin: 0 0 12px;
-            font-size: 20px;
-        }
-
-        .panel-actions,
-        .tools-row,
-        .user-actions {
+        .panel-heading {
             display: flex;
             align-items: center;
-            gap: 8px;
-        }
-
-        .panel-actions {
             justify-content: space-between;
-            margin-bottom: 9px;
+            gap: 10px;
+            margin-bottom: 14px;
         }
 
-        .tools-row {
-            margin-bottom: 9px;
+        .panel-heading h2 {
+            margin: 0;
+            font-size: 15px;
         }
 
         .online-count {
-            padding: 8px 10px;
+            padding: 6px 9px;
+            border: 1px solid rgba(0, 229, 255, 0.24);
             border-radius: 999px;
-            background: #43a047;
-            color: #fff;
-            font-size: 13px;
+            background: rgba(0, 229, 255, 0.08);
+            color: var(--cyan);
+            font-size: 11px;
             font-weight: 700;
             white-space: nowrap;
         }
 
         button {
             border: 0;
-            border-radius: 7px;
-            color: #fff;
+            border-radius: 8px;
+            color: var(--text);
             cursor: pointer;
             font-size: 13px;
             font-weight: 700;
         }
 
+        button:focus-visible,
+        input:focus-visible,
+        a:focus-visible {
+            outline: 2px solid var(--cyan);
+            outline-offset: 2px;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+        }
+
         .show-all,
         .search-button {
-            padding: 9px 11px;
+            padding: 10px 12px;
+            background: rgba(0, 229, 255, 0.12);
+            color: var(--cyan);
         }
 
-        .show-all {
-            background: #43a047;
+        .show-all:hover,
+        .search-button:hover {
+            background: rgba(0, 229, 255, 0.2);
         }
 
-        .show-all:hover {
-            background: #388e3c;
+        .device-search {
+            position: relative;
+            margin-bottom: 10px;
         }
 
-        .search-form {
-            display: flex;
-            width: 100%;
-            gap: 7px;
+        .search-icon {
+            position: absolute;
+            top: 50%;
+            left: 13px;
+            color: var(--muted);
+            font-size: 17px;
+            pointer-events: none;
+            transform: translateY(-52%);
         }
 
         .search-input {
+            display: flex;
+            width: 100%;
             min-width: 0;
-            flex: 1;
-            padding: 9px 10px;
-            border: 1px solid #cfd8dc;
-            border-radius: 7px;
+            padding: 12px 12px 12px 39px;
+            border: 1px solid var(--line);
+            border-radius: 9px;
+            background: #111a33;
+            color: var(--text);
             font-size: 14px;
-        }
-
-        .search-input:focus {
-            outline: 2px solid rgba(30, 136, 229, 0.2);
-            border-color: #1e88e5;
-        }
-
-        .search-button {
-            background: #1e88e5;
-        }
-
-        .search-button:hover {
-            background: #1565c0;
         }
 
         .push-button {
             width: 100%;
-            margin-bottom: 9px;
+            margin-bottom: 10px;
             padding: 10px 12px;
-            background: #6a1b9a;
+            background: #27355a;
+            color: var(--cyan);
         }
 
         .push-button:hover {
-            background: #4a148c;
+            background: #31436e;
         }
 
         .connection-status {
-            min-height: 18px;
-            margin: 0 0 8px;
-            color: #607d8b;
-            font-size: 13px;
+            min-height: 16px;
+            margin: 0 0 9px;
+            color: var(--muted);
+            font-size: 12px;
         }
 
         .sos-banner {
             position: fixed;
-            top: 14px;
+            top: 78px;
             left: 50%;
             z-index: 1200;
             max-width: calc(100vw - 28px);
-            padding: 14px 22px;
+            padding: 13px 20px;
             transform: translateX(-50%);
-            border-radius: 8px;
-            background: #c62828;
-            color: #fff;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
-            font-size: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            background: var(--red);
+            color: var(--text);
+            box-shadow: 0 0 26px rgba(255, 0, 51, 0.55);
+            font-size: 17px;
             font-weight: 700;
             text-align: center;
             animation: alert-flash 1s infinite alternate;
@@ -175,63 +285,144 @@
             min-height: 0;
             flex: 1;
             overflow-y: auto;
-            padding-right: 3px;
+            padding: 2px 3px 2px 0;
+            scrollbar-color: #445477 transparent;
         }
 
         .user-card {
-            margin-bottom: 8px;
-            padding: 10px;
-            border-radius: 8px;
-            background: #f5f5f5;
+            margin-bottom: 10px;
+            padding: 13px;
+            border: 1px solid var(--line);
+            border-radius: 11px;
+            background: rgba(36, 48, 79, 0.92);
             font-size: 12px;
             overflow-wrap: anywhere;
+            transition: border-color 150ms ease, transform 150ms ease;
+        }
+
+        .user-card:hover {
+            transform: translateY(-1px);
+            border-color: rgba(0, 229, 255, 0.45);
+        }
+
+        .user-title {
+            min-width: 0;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 5px;
         }
 
         .user-id {
-            margin-bottom: 6px;
-            font-size: 13px;
+            min-width: 0;
+            margin: 0;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .vehicle-icon {
+            margin-right: 5px;
+            color: var(--cyan);
+        }
+
+        .sos-state {
+            flex: 0 0 auto;
+            padding: 5px 7px;
+            border-radius: 7px;
+            background: var(--red);
+            box-shadow: 0 0 15px rgba(255, 0, 51, 0.48);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+        }
+
+        .user-location {
+            margin: 0 0 11px;
+            color: var(--muted);
+            line-height: 1.4;
+        }
+
+        .user-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 7px;
+            margin-bottom: 12px;
+        }
+
+        .metric {
+            min-width: 0;
+            padding: 8px;
+            border-radius: 8px;
+            background: rgba(11, 19, 43, 0.55);
+        }
+
+        .metric-label {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .metric-value {
+            display: block;
+            color: var(--text);
+            font-size: 12px;
             font-weight: 700;
         }
 
         .user-detail {
             margin: 4px 0;
-            color: #546e7a;
+            color: var(--muted);
         }
 
         .user-actions {
-            margin-top: 8px;
+            gap: 7px;
         }
 
         .user-actions button {
             flex: 1;
-            padding: 7px 8px;
+            min-height: 36px;
+            padding: 8px;
             font-size: 12px;
         }
 
         .center-user {
-            background: #1e88e5;
+            background: var(--cyan);
+            color: #06111f;
         }
 
         .route-user {
-            background: #43a047;
+            border: 1px solid rgba(0, 229, 255, 0.42);
+            background: transparent;
+            color: var(--cyan);
         }
 
         .center-user:hover {
-            background: #1565c0;
+            background: #70f1ff;
         }
 
         .route-user:hover {
-            background: #388e3c;
+            background: rgba(0, 229, 255, 0.1);
         }
 
-        button:disabled {
-            cursor: not-allowed;
-            opacity: 0.5;
+        .sos-user {
+            flex: 0 0 38px !important;
+            width: 38px;
+            border: 1px solid rgba(255, 0, 51, 0.45);
+            background: rgba(255, 0, 51, 0.14);
+            color: #ff5575;
+            font-size: 17px !important;
+        }
+
+        .sos-user.active,
+        .sos-user:hover:not(:disabled) {
+            background: var(--red);
+            box-shadow: 0 0 16px rgba(255, 0, 51, 0.45);
+            color: #fff;
         }
 
         .empty-list {
-            padding: 10px 4px;
-            color: #607d8b;
+            padding: 14px 5px;
+            color: var(--muted);
             font-size: 13px;
         }
 
@@ -240,35 +431,37 @@
             max-height: 190px;
             flex: 0 0 auto;
             flex-direction: column;
-            margin-top: 9px;
-            padding-top: 9px;
-            border-top: 1px solid #dce3e7;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--line);
         }
 
         .notifications h2 {
-            margin: 0 0 7px;
-            font-size: 15px;
+            margin: 0 0 8px;
+            font-size: 13px;
         }
 
         .notification-list {
-            min-height: 44px;
+            min-height: 36px;
             overflow-y: auto;
         }
 
         .notification-item {
             margin-bottom: 6px;
-            padding: 8px;
-            border-radius: 7px;
-            background: #e8f5e9;
-            color: #2e7d32;
+            padding: 9px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(0, 229, 255, 0.07);
+            color: #b6f6ff;
             font-size: 12px;
             line-height: 1.4;
             overflow-wrap: anywhere;
         }
 
         .notification-item.sos {
-            background: #ffebee;
-            color: #b71c1c;
+            border-color: rgba(255, 0, 51, 0.3);
+            background: rgba(255, 0, 51, 0.12);
+            color: #ff9aad;
             font-weight: 700;
         }
 
@@ -277,67 +470,288 @@
             height: 24px;
             border: 4px solid #fff;
             border-radius: 50%;
-            background: #e53935;
-            box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.75);
+            background: var(--red);
+            box-shadow: 0 0 0 0 rgba(255, 0, 51, 0.75);
             animation: marker-pulse 1s infinite;
         }
 
         @keyframes marker-pulse {
-            0% { box-shadow: 0 0 0 0 rgba(229, 57, 53, 0.75); }
-            100% { box-shadow: 0 0 0 14px rgba(229, 57, 53, 0); }
+            0% { box-shadow: 0 0 0 0 rgba(255, 0, 51, 0.75); }
+            100% { box-shadow: 0 0 0 14px rgba(255, 0, 51, 0); }
         }
 
         @keyframes alert-flash {
-            from { background: #c62828; }
-            to { background: #ef5350; }
+            from { box-shadow: 0 0 18px rgba(255, 0, 51, 0.38); }
+            to { box-shadow: 0 0 30px rgba(255, 0, 51, 0.72); }
         }
 
-        @media (max-width: 520px) {
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(130px, 1fr));
+            align-content: start;
+            gap: 12px;
+        }
+
+        .stat-card {
+            min-height: 88px;
+            padding: 14px 16px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: rgba(28, 37, 65, 0.93);
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+            backdrop-filter: blur(8px);
+        }
+
+        .stat-label {
+            display: block;
+            margin-bottom: 9px;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .stat-value {
+            display: block;
+            color: var(--cyan);
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .stat-note {
+            display: block;
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .panel-tools {
+            display: flex;
+            flex: 0 0 auto;
+            flex-direction: column;
+        }
+
+        .geofence-form {
+            display: flex;
+            gap: 7px;
+            margin-bottom: 7px;
+        }
+
+        .geofence-form .search-input {
+            padding: 9px 10px;
+            font-size: 12px;
+        }
+
+        .geofence-form .search-button {
+            padding: 8px 10px;
+            font-size: 11px;
+        }
+
+        .map-column {
+            min-width: 0;
+        }
+
+        .leaflet-control-zoom a {
+            border-color: rgba(160, 170, 178, 0.24) !important;
+            background: var(--panel) !important;
+            color: var(--cyan) !important;
+        }
+
+        .leaflet-popup-content-wrapper,
+        .leaflet-popup-tip {
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        .leaflet-control-attribution {
+            background: rgba(11, 19, 43, 0.78) !important;
+            color: var(--muted) !important;
+        }
+
+        @media (max-width: 900px) {
+            body {
+                overflow: auto;
+            }
+
+            .dashboard {
+                position: absolute;
+                inset: 80px 12px 12px;
+                display: flex;
+                flex-direction: column-reverse;
+                gap: 10px;
+                pointer-events: none;
+            }
+
             .admin-panel {
-                top: 8px;
-                bottom: 8px;
-                left: 8px;
-                width: min(360px, calc(100vw - 16px));
+                width: min(100%, 600px);
+                max-height: 46vh;
+                min-height: 230px;
+                align-self: center;
                 padding: 12px;
+            }
+
+            .map-column {
+                min-height: 150px;
+                flex: 1;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(4, minmax(105px, 1fr));
+                gap: 8px;
+                overflow-x: auto;
+            }
+
+            .stat-card {
+                min-height: 70px;
+                padding: 10px;
+            }
+
+            .stat-value {
+                font-size: 18px;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .top-bar {
+                height: 60px;
+                gap: 8px;
+                padding: 0 10px;
+            }
+
+            .top-bar-left {
+                gap: 9px;
+            }
+
+            .top-bar h1 {
+                font-size: 15px;
+            }
+
+            .back-link {
+                padding: 8px;
+                font-size: 11px;
+            }
+
+            .top-bar-right {
+                gap: 8px;
+                font-size: 11px;
+            }
+
+            .dashboard {
+                inset: 68px 8px 8px;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(4, minmax(95px, 1fr));
+            }
+
+            .stat-card {
+                min-height: 66px;
+                padding: 8px;
+            }
+
+            .stat-label {
+                margin-bottom: 5px;
+                font-size: 10px;
+            }
+
+            .stat-value {
+                font-size: 16px;
+            }
+
+            .stat-note {
+                display: none;
+            }
+
+            .admin-panel {
+                max-height: 48vh;
+            }
+
+            .sos-banner {
+                top: 66px;
+                font-size: 15px;
             }
         }
     </style>
 </head>
 <body>
-    <aside class="admin-panel">
-        <div class="panel-header">
-            <h1>UbicacionGPS · Admin</h1>
-            <div class="panel-actions">
-                <span class="online-count" id="online-count">0 usuarios en línea</span>
-                <button class="show-all" id="show-all" type="button">Ver todos</button>
+    <div id="map"></div>
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <a class="back-link" href="/">‹ Volver al Mapa</a>
+            <h1>Panel de Control</h1>
+        </div>
+        <div class="top-bar-right">
+            <span class="connection-indicator" id="connection-indicator">
+                <span class="connection-dot" aria-hidden="true"></span>
+                <span id="connection-label">Conectando</span>
+            </span>
+            <time id="current-time" aria-label="Hora actual"></time>
+        </div>
+    </header>
+    <main class="dashboard">
+        <aside class="admin-panel">
+            <div class="panel-heading">
+                <h2>Dispositivos conectados</h2>
+                <span class="online-count" id="online-count">0 en línea</span>
             </div>
-            <button class="push-button" id="enable-push" type="button" hidden>Activar notificaciones en este dispositivo</button>
-            <form class="tools-row search-form" id="address-search-form">
-                <input class="search-input" id="address-search" type="search" placeholder="Buscar dirección" aria-label="Dirección para geocerca" required>
-                <button class="search-button" id="search-button" type="submit">Buscar</button>
-            </form>
-            <p class="connection-status" id="connection-status" aria-live="polite">Conectando al servidor...</p>
+            <div class="panel-tools">
+                <label class="device-search">
+                    <span class="search-icon" aria-hidden="true">⌕</span>
+                    <input class="search-input" id="device-search" type="search" placeholder="Buscar dispositivos..." aria-label="Buscar dispositivos">
+                </label>
+                <div class="panel-actions">
+                    <button class="show-all" id="show-all" type="button">Ver todos en mapa</button>
+                </div>
+                <button class="push-button" id="enable-push" type="button" hidden>Activar notificaciones en este dispositivo</button>
+                <form class="geofence-form" id="address-search-form">
+                    <input class="search-input" id="address-search" type="search" placeholder="Dirección para geocerca" aria-label="Dirección para geocerca" required>
+                    <button class="search-button" id="search-button" type="submit">Buscar</button>
+                </form>
+                <p class="connection-status" id="connection-status" aria-live="polite">Conectando al servidor...</p>
+            </div>
             <div class="sos-banner" id="sos-banner" role="alert" hidden></div>
-        </div>
-        <div class="user-list" id="user-list" aria-live="polite">
-            <div class="empty-list">Esperando usuarios...</div>
-        </div>
-        <section class="notifications" aria-label="Notificaciones">
-            <h2>Notificaciones</h2>
-            <div class="notification-list" id="notification-list" aria-live="polite">
-                <div class="empty-list">Sin notificaciones.</div>
+            <div class="user-list" id="user-list" aria-live="polite">
+                <div class="empty-list">Esperando usuarios...</div>
+            </div>
+            <section class="notifications" aria-label="Notificaciones">
+                <h2>Notificaciones</h2>
+                <div class="notification-list" id="notification-list" aria-live="polite">
+                    <div class="empty-list">Sin notificaciones.</div>
+                </div>
+            </section>
+        </aside>
+        <section class="map-column" aria-label="Mapa y estadísticas">
+            <div class="stats-grid">
+                <article class="stat-card">
+                    <span class="stat-label">Activos</span>
+                    <strong class="stat-value" id="stat-active">0</strong>
+                    <span class="stat-note">En línea ahora</span>
+                </article>
+                <article class="stat-card">
+                    <span class="stat-label">Alertas</span>
+                    <strong class="stat-value" id="stat-alerts">0</strong>
+                    <span class="stat-note">SOS activos</span>
+                </article>
+                <article class="stat-card">
+                    <span class="stat-label">Batería promedio</span>
+                    <strong class="stat-value" id="stat-battery">N/D</strong>
+                    <span class="stat-note">Dato no disponible</span>
+                </article>
+                <article class="stat-card">
+                    <span class="stat-label">Distancia hoy</span>
+                    <strong class="stat-value" id="stat-distance">0 m</strong>
+                    <span class="stat-note">Según el historial recibido</span>
+                </article>
             </div>
         </section>
-    </aside>
-    <div id="map"></div>
+    </main>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script>
         const map = L.map('map').setView([0, 0], 2);
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 20
         }).addTo(map);
 
         const socket = io(window.location.origin, {
@@ -353,9 +767,26 @@
         const status = document.getElementById('connection-status');
         const sosBanner = document.getElementById('sos-banner');
         const enablePushButton = document.getElementById('enable-push');
+        const deviceSearch = document.getElementById('device-search');
+        const connectionIndicator = document.getElementById('connection-indicator');
+        const connectionLabel = document.getElementById('connection-label');
+        const currentTime = document.getElementById('current-time');
         let activeRoute = null;
         let temporarySearchMarker = null;
         let temporaryMarkerTimeout = null;
+
+        function updateClock() {
+            const now = new Date();
+            currentTime.dateTime = now.toISOString();
+            currentTime.textContent = now.toLocaleTimeString('es', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        updateClock();
+        window.setInterval(updateClock, 1000);
 
         // Convierte la clave VAPID pública al formato binario que requiere el navegador.
         function decodeVapidPublicKey(encodedKey) {
@@ -420,6 +851,61 @@
             return value ? new Date(value).toLocaleString('es') : 'Sin ubicación recibida';
         }
 
+        function formatTimeAgo(value) {
+            if (!value) {
+                return 'Sin conexión';
+            }
+            const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+            if (!Number.isFinite(elapsedSeconds)) {
+                return 'Sin conexión';
+            }
+            if (elapsedSeconds < 60) {
+                return `Hace ${elapsedSeconds}s`;
+            }
+            if (elapsedSeconds < 3600) {
+                return `Hace ${Math.floor(elapsedSeconds / 60)} min`;
+            }
+            return `Hace ${Math.floor(elapsedSeconds / 3600)} h`;
+        }
+
+        function distanceBetween(first, second) {
+            const radians = (degrees) => degrees * Math.PI / 180;
+            const latitudeDelta = radians(second.lat - first.lat);
+            const longitudeDelta = radians(second.lng - first.lng);
+            const value = Math.sin(latitudeDelta / 2) ** 2
+                + Math.cos(radians(first.lat)) * Math.cos(radians(second.lat))
+                * Math.sin(longitudeDelta / 2) ** 2;
+            return 6371000 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+        }
+
+        function getDistanceToday() {
+            const today = new Date().toLocaleDateString('en-CA');
+            let totalMeters = 0;
+            users.forEach((user) => {
+                const points = (user.history || []).filter((point) => (
+                    point.timestamp
+                    && new Date(point.timestamp).toLocaleDateString('en-CA') === today
+                    && Number.isFinite(point.lat)
+                    && Number.isFinite(point.lng)
+                ));
+                for (let index = 1; index < points.length; index += 1) {
+                    totalMeters += distanceBetween(points[index - 1], points[index]);
+                }
+            });
+            return totalMeters;
+        }
+
+        function formatDistance(meters) {
+            return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
+        }
+
+        function updateStats() {
+            document.getElementById('stat-active').textContent = users.size;
+            document.getElementById('stat-alerts').textContent = Array.from(users.values())
+                .filter((user) => user.sosActive).length;
+            document.getElementById('stat-distance').textContent = formatDistance(getDistanceToday());
+        }
+
         function addNotification(message, type = '') {
             const empty = notifications.querySelector('.empty-list');
             if (empty) {
@@ -447,6 +933,7 @@
 
         function renderUsers() {
             count.textContent = `${users.size} ${users.size === 1 ? 'usuario en línea' : 'usuarios en línea'}`;
+            updateStats();
             list.replaceChildren();
 
             if (users.size === 0) {
@@ -457,23 +944,66 @@
                 return;
             }
 
-            Array.from(users.values())
-                .sort((first, second) => first.socketId.localeCompare(second.socketId))
-                .forEach((user) => {
+            const query = deviceSearch.value.trim().toLocaleLowerCase('es');
+            const visibleUsers = Array.from(users.values())
+                .filter((user) => user.socketId.toLocaleLowerCase('es').includes(query))
+                .sort((first, second) => first.socketId.localeCompare(second.socketId));
+
+            if (visibleUsers.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'empty-list';
+                empty.textContent = 'No hay dispositivos que coincidan con la búsqueda.';
+                list.appendChild(empty);
+                return;
+            }
+
+            visibleUsers.forEach((user) => {
                     const card = document.createElement('article');
                     card.className = 'user-card';
 
+                    const title = document.createElement('div');
+                    title.className = 'user-title';
+
                     const id = document.createElement('div');
                     id.className = 'user-id';
-                    id.textContent = user.socketId;
+                    id.textContent = `🚘 Dispositivo · ${user.socketId}`;
+
+                    title.appendChild(id);
+                    if (user.sosActive) {
+                        const sosState = document.createElement('span');
+                        sosState.className = 'sos-state';
+                        sosState.textContent = 'SOS ACTIVO';
+                        title.appendChild(sosState);
+                    }
+
+                    const location = document.createElement('p');
+                    location.className = 'user-location';
+                    location.textContent = hasLocation(user)
+                        ? `Coordenadas: ${user.lastLat.toFixed(5)}, ${user.lastLng.toFixed(5)}`
+                        : 'Ubicación no disponible todavía';
+
+                    const metrics = document.createElement('div');
+                    metrics.className = 'user-metrics';
+                    [
+                        ['Batería', 'N/D'],
+                        ['Satélites', 'N/D'],
+                        ['Última conexión', formatTimeAgo(user.lastUpdate)]
+                    ].forEach(([label, value]) => {
+                        const metric = document.createElement('div');
+                        metric.className = 'metric';
+                        const metricLabel = document.createElement('span');
+                        metricLabel.className = 'metric-label';
+                        metricLabel.textContent = label;
+                        const metricValue = document.createElement('span');
+                        metricValue.className = 'metric-value';
+                        metricValue.textContent = value;
+                        metric.append(metricLabel, metricValue);
+                        metrics.appendChild(metric);
+                    });
 
                     const room = document.createElement('div');
                     room.className = 'user-detail';
-                    room.textContent = `Sala: ${user.roomCode}`;
-
-                    const updated = document.createElement('div');
-                    updated.className = 'user-detail';
-                    updated.textContent = `Última actualización: ${formatLastUpdate(user.lastUpdate)}`;
+                    room.textContent = `Sala: ${user.roomCode || 'global'}`;
 
                     const actions = document.createElement('div');
                     actions.className = 'user-actions';
@@ -481,7 +1011,7 @@
                     const center = document.createElement('button');
                     center.className = 'center-user';
                     center.type = 'button';
-                    center.textContent = 'Centrar';
+                    center.textContent = 'Ubicar en mapa';
                     center.disabled = !hasLocation(user);
                     center.addEventListener('click', () => {
                         if (hasLocation(user)) {
@@ -496,11 +1026,26 @@
                     route.disabled = !user.history || user.history.length === 0;
                     route.addEventListener('click', () => showRoute(user));
 
-                    actions.append(center, route);
-                    card.append(id, room, updated, actions);
+                    const sos = document.createElement('button');
+                    sos.className = `sos-user${user.sosActive ? ' active' : ''}`;
+                    sos.type = 'button';
+                    sos.textContent = '🔔';
+                    sos.setAttribute('aria-label', user.sosActive ? 'Ver alerta SOS en el mapa' : 'Sin alerta SOS activa');
+                    sos.title = user.sosActive ? 'Ver alerta SOS en el mapa' : 'Sin alerta SOS activa';
+                    sos.disabled = !user.sosActive || !hasLocation(user);
+                    sos.addEventListener('click', () => {
+                        if (user.sosActive && hasLocation(user)) {
+                            map.setView([user.lastLat, user.lastLng], 16);
+                        }
+                    });
+
+                    actions.append(center, route, sos);
+                    card.append(title, location, metrics, room, actions);
                     list.appendChild(card);
                 });
         }
+
+        deviceSearch.addEventListener('input', renderUsers);
 
         function updateUser(user) {
             const previous = users.get(user.socketId);
@@ -557,7 +1102,7 @@
                 map.removeLayer(activeRoute);
             }
             activeRoute = L.polyline(points, {
-                color: '#43a047',
+                color: '#00e5ff',
                 weight: 5,
                 opacity: 0.85
             }).addTo(map);
@@ -663,6 +1208,9 @@
                     return;
                 }
                 status.textContent = 'Panel conectado en tiempo real.';
+                connectionLabel.textContent = 'En Línea';
+                connectionIndicator.classList.add('connected');
+                connectionIndicator.classList.remove('disconnected');
                 enablePushButton.hidden = false;
             });
         });
@@ -711,10 +1259,16 @@
 
         socket.on('connect_error', () => {
             status.textContent = 'Error de autenticación. Verifica tu clave.';
+            connectionLabel.textContent = 'Error';
+            connectionIndicator.classList.remove('connected');
+            connectionIndicator.classList.add('disconnected');
         });
 
         socket.on('disconnect', () => {
             status.textContent = 'Conexión perdida. Intentando reconectar...';
+            connectionLabel.textContent = 'Desconectado';
+            connectionIndicator.classList.remove('connected');
+            connectionIndicator.classList.add('disconnected');
         });
     </script>
 </body>

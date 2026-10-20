@@ -6,6 +6,16 @@
     <title>UbicacionGPS</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <style>
+        :root {
+            color-scheme: dark;
+            --background: #0b132b;
+            --panel: #1c2541;
+            --cyan: #00e5ff;
+            --text: #fff;
+            --muted: #a0aab2;
+            --red: #ff0033;
+        }
+
         * {
             box-sizing: border-box;
             font-family: Arial, Helvetica, sans-serif !important;
@@ -19,45 +29,63 @@
         }
 
         body {
-            background: #f4f4f4;
-            color: #263238;
+            overflow: hidden;
+            background: var(--background);
+            color: var(--text);
         }
 
         #map {
             width: 100%;
-            height: 100vh;
+            height: 100%;
         }
 
         .status-panel {
-            position: absolute;
+            position: fixed;
             top: 10px;
             left: 10px;
             z-index: 1000;
             width: min(360px, calc(100vw - 20px));
             padding: 18px;
             border-radius: 12px;
-            background: rgba(255, 255, 255, 0.95);
-            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            background: rgba(28, 37, 65, 0.94);
+            box-shadow: 0 8px 26px rgba(0, 0, 0, 0.32);
+            color: var(--text);
+            backdrop-filter: blur(10px);
         }
 
         .status-panel h1 {
             margin: 0 0 6px;
             font-size: 20px;
+            letter-spacing: 0.025em;
         }
 
         .status-message {
             margin: 0;
-            color: #546e7a;
+            color: var(--muted);
             font-size: 14px;
             line-height: 1.4;
+        }
+
+        .status-message::before {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            margin-right: 8px;
+            border-radius: 50%;
+            background: var(--cyan);
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.8);
+            content: "";
+            vertical-align: 1px;
         }
 
         .sos-sent-message {
             margin-top: 10px;
             padding: 10px 12px;
             border-radius: 8px;
-            background: #c62828;
-            color: #fff;
+            background: var(--red);
+            color: var(--text);
+            box-shadow: 0 0 18px rgba(255, 0, 51, 0.35);
             font-size: 14px;
             font-weight: 700;
         }
@@ -73,11 +101,16 @@
             z-index: 1000;
             padding: 10px 13px;
             border-radius: 8px;
-            background: #fff;
-            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
-            color: #1565c0;
+            border: 1px solid rgba(0, 229, 255, 0.24);
+            background: rgba(28, 37, 65, 0.95);
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+            color: var(--cyan);
             font-size: 13px;
             text-decoration: none;
+        }
+
+        .admin-link:hover {
+            background: #24304f;
         }
 
         .sos-button {
@@ -89,16 +122,17 @@
             height: 82px;
             border: 4px solid #fff;
             border-radius: 50%;
-            background: #e53935;
-            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-            color: #fff;
+            background: var(--red);
+            box-shadow: 0 0 24px rgba(255, 0, 51, 0.68), 0 4px 16px rgba(0, 0, 0, 0.3);
+            color: var(--text);
             cursor: pointer;
             font-size: 21px;
             font-weight: 700;
         }
 
         .sos-button:hover {
-            background: #c62828;
+            background: #e6002e;
+            box-shadow: 0 0 32px rgba(255, 0, 51, 0.9), 0 4px 16px rgba(0, 0, 0, 0.3);
         }
 
         .tracking-button {
@@ -108,14 +142,39 @@
             z-index: 1000;
             max-width: calc(100vw - 24px);
             padding: 11px 14px;
-            border: 0;
+            border: 1px solid rgba(0, 229, 255, 0.34);
             border-radius: 8px;
-            background: #2e7d32;
+            background: rgba(28, 37, 65, 0.97);
             box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
-            color: #fff;
+            color: var(--cyan);
             cursor: pointer;
             font-size: 13px;
             font-weight: 700;
+        }
+
+        .tracking-button:hover {
+            background: #24304f;
+        }
+
+        .install-button {
+            position: fixed;
+            left: 18px;
+            bottom: 18px;
+            z-index: 1000;
+            padding: 12px 16px;
+            border: 1px solid rgba(0, 229, 255, 0.4);
+            border-radius: 8px;
+            background: rgba(28, 37, 65, 0.97);
+            box-shadow: 0 0 16px rgba(0, 229, 255, 0.22);
+            color: var(--cyan);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .install-button:hover {
+            background: #24304f;
+            box-shadow: 0 0 22px rgba(0, 229, 255, 0.4);
         }
 
         .own-location-marker {
@@ -123,8 +182,25 @@
             height: 20px;
             border: 4px solid #fff;
             border-radius: 50%;
-            background: #1e88e5;
-            box-shadow: 0 1px 7px rgba(0, 0, 0, 0.55);
+            background: var(--cyan);
+            box-shadow: 0 0 12px rgba(0, 229, 255, 0.75), 0 1px 7px rgba(0, 0, 0, 0.55);
+        }
+
+        .leaflet-control-zoom a {
+            border-color: rgba(160, 170, 178, 0.24) !important;
+            background: var(--panel) !important;
+            color: var(--cyan) !important;
+        }
+
+        .leaflet-popup-content-wrapper,
+        .leaflet-popup-tip {
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        .leaflet-control-attribution {
+            background: rgba(11, 19, 43, 0.78) !important;
+            color: var(--muted) !important;
         }
     </style>
 </head>
@@ -138,21 +214,57 @@
     <a class="admin-link" id="admin-link" href="/panel-privado-gps">Ver panel admin</a>
     <button class="tracking-button" id="tracking-button" type="button" hidden>Iniciar rastreo en segundo plano</button>
     <button class="sos-button" id="sos-button" type="button" aria-label="Enviar alerta SOS">SOS</button>
+    <button class="install-button" id="btn-instalar-app" type="button" hidden>Descargar App</button>
 
     <script src="/native-config.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
-    <script src="/background-location.js"></script>
+    <script src="/background-location.bundle.js"></script>
     <script>
+        let deferredPrompt;
+        const installButton = document.getElementById('btn-instalar-app');
+
+        window.addEventListener('beforeinstallprompt', (event) => {
+            event.preventDefault();
+            deferredPrompt = event;
+            installButton.hidden = false;
+        });
+
+        installButton.addEventListener('click', async () => {
+            if (!deferredPrompt) {
+                installButton.hidden = true;
+                return;
+            }
+
+            try {
+                await deferredPrompt.prompt();
+                await deferredPrompt.userChoice;
+            } catch (error) {
+                console.error('No se pudo mostrar el diálogo para instalar la app:', error);
+            } finally {
+                deferredPrompt = null;
+                installButton.hidden = true;
+            }
+        });
+
+        window.addEventListener('appinstalled', () => {
+            deferredPrompt = null;
+            installButton.hidden = true;
+        });
+
         const map = L.map('map').setView([0, 0], 2);
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 20
         }).addTo(map);
 
         const isNativeApp = Boolean(window.Capacitor?.isNativePlatform());
         const configuredBackendUrl = String(window.UBICACIONGPS_BACKEND_URL || '').replace(/\/+$/, '');
         const backendUrl = isNativeApp ? configuredBackendUrl : window.location.origin;
+        if (isNativeApp && backendUrl) {
+            document.getElementById('admin-link').href = `${backendUrl}/panel-privado-gps`;
+        }
         const createDeviceId = () => crypto.randomUUID
             ? crypto.randomUUID()
             : Array.from(crypto.getRandomValues(new Uint8Array(24)))
@@ -232,16 +344,45 @@
             }
 
             try {
-                const permissions = await window.BackgroundLocation.requestPermissions();
-                if (!permissions.backgroundLocation) {
+                let permissions = await window.BackgroundLocation.checkPermissions();
+                if (permissions.location !== 'granted') {
+                    permissions = await window.BackgroundLocation.requestPermissions({
+                        permissions: ['location']
+                    });
+                }
+                if (permissions.location !== 'granted') {
+                    statusMessage.textContent = 'Permite el acceso a la ubicación mientras usas la app para continuar.';
+                    return;
+                }
+                if (permissions.backgroundLocation !== 'granted') {
+                    permissions = await window.BackgroundLocation.requestPermissions({
+                        permissions: ['backgroundLocation']
+                    });
+                }
+                if (permissions.backgroundLocation !== 'granted') {
                     statusMessage.textContent = 'Permite el acceso a ubicación "Siempre" en los ajustes y vuelve a iniciar el rastreo.';
                     return;
                 }
 
-                await window.BackgroundLocation.start({
-                    url: `${backendUrl}/update-location`,
-                    deviceId
+                await window.BackgroundLocation.configure({
+                    distanceFilter: 15,
+                    desiredAccuracy: 'high',
+                    locationUpdateInterval: 5000,
+                    heartbeatInterval: 15,
+                    http: {
+                        url: `${backendUrl}/update-location`,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Device-Id': deviceId
+                        },
+                        buffer: { maxSize: 1000 }
+                    },
+                    notification: {
+                        title: 'UbicacionGPS activo',
+                        text: 'Compartiendo tu ubicación con tu familia'
+                    }
                 });
+                await window.BackgroundLocation.start();
                 socket.connect();
                 statusMessage.textContent = 'Rastreo en segundo plano activo. Deténlo desde el botón cuando termines.';
                 trackingButton.textContent = 'Detener rastreo en segundo plano';
@@ -279,7 +420,7 @@
                 }
             });
 
-            window.BackgroundLocation?.addListener('location', (location) => {
+            window.BackgroundLocation?.addListener('onLocation', (location) => {
                 permissionDenied = false;
                 shareLocation({
                     coords: {
@@ -287,6 +428,9 @@
                         longitude: location.longitude
                     }
                 });
+            }).catch((error) => {
+                console.error('No se pudo registrar el evento de ubicación:', error);
+                statusMessage.textContent = `No se pudo inicializar el plugin de ubicación: ${error.message || error}`;
             });
 
             if (!backendUrl) {

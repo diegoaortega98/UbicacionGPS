@@ -25,9 +25,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>UbicacionGPS usa tu ubicación para compartir tu posición en el mapa.</string>
+	<string>UbicacionGPS necesita tu ubicación para mostrarte en el mapa.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>UbicacionGPS comparte tu ubicación mientras el rastreo está activo, incluso con la app minimizada o la pantalla bloqueada.</string>
+	<string>UbicacionGPS necesita tu ubicación siempre para que tu familia sepa dónde estás.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

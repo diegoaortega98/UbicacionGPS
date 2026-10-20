@@ -1,0 +1,26 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const esbuild = require('esbuild');
+
+const projectRoot = path.resolve(__dirname, '..');
+const pluginRoot = path.dirname(path.dirname(require.resolve('@bglocation/capacitor')));
+
+async function buildFrontend() {
+    await esbuild.build({
+        entryPoints: [path.join(__dirname, 'background-location.js')],
+        bundle: true,
+        format: 'iife',
+        target: 'es2020',
+        outfile: path.join(projectRoot, 'public', 'background-location.bundle.js')
+    });
+
+    fs.copyFileSync(
+        path.join(pluginRoot, 'LICENSE.md'),
+        path.join(projectRoot, 'public', 'bglocation-license.md')
+    );
+}
+
+buildFrontend().catch((error) => {
+    console.error('No se pudo compilar el plugin de ubicación:', error);
+    process.exitCode = 1;
+});

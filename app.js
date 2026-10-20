@@ -342,7 +342,11 @@ app.post('/update-location', (req, res) => {
         return res.status(426).json({ error: 'El endpoint de ubicación requiere HTTPS.' });
     }
 
-    const { deviceId, lat, lng } = req.body || {};
+    const body = req.body || {};
+    const location = body.location || {};
+    const deviceId = req.get('X-Device-Id') || body.deviceId;
+    const lat = body.lat ?? location.latitude;
+    const lng = body.lng ?? location.longitude;
     if (typeof deviceId !== 'string' || !/^[\w-]{16,80}$/.test(deviceId)
         || !Number.isFinite(lat) || !Number.isFinite(lng)
         || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
