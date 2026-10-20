@@ -58,8 +58,31 @@
             backdrop-filter: blur(10px);
         }
 
+        .admin-lock {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: grid;
+            width: 30px;
+            height: 30px;
+            place-items: center;
+            border: 1px solid rgba(0, 229, 255, 0.24);
+            border-radius: 8px;
+            color: #00e5ff;
+            font-size: 16px;
+            line-height: 1;
+            text-decoration: none;
+            transition: background 150ms ease, box-shadow 150ms ease;
+        }
+
+        .admin-lock:hover {
+            background: rgba(0, 229, 255, 0.12);
+            box-shadow: 0 0 12px rgba(0, 229, 255, 0.28);
+        }
+
         .status-panel h1 {
             margin: 0 0 6px;
+            padding-right: 34px;
             font-size: 20px;
             letter-spacing: 0.025em;
         }
@@ -96,25 +119,6 @@
 
         [hidden] {
             display: none !important;
-        }
-
-        .admin-link {
-            position: fixed;
-            right: 12px;
-            bottom: 112px;
-            z-index: 1000;
-            padding: 10px 13px;
-            border-radius: 8px;
-            border: 1px solid rgba(0, 229, 255, 0.24);
-            background: rgba(28, 37, 65, 0.95);
-            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
-            color: var(--cyan);
-            font-size: 13px;
-            text-decoration: none;
-        }
-
-        .admin-link:hover {
-            background: #24304f;
         }
 
         .sos-button {
@@ -210,12 +214,12 @@
 </head>
 <body>
     <section class="status-panel" aria-label="Estado de ubicación">
+        <a class="admin-lock" id="admin-link" href="/panel-privado-gps" aria-label="Abrir panel de administrador" title="Panel de administrador">🔒</a>
         <h1>UbicacionGPS</h1>
         <p class="status-message" id="status-message" aria-live="polite">Solicitando permiso de ubicación...</p>
         <div class="sos-sent-message" id="sos-sent-message" role="alert" hidden>¡Alerta SOS enviada!</div>
     </section>
     <div id="map"></div>
-    <a class="admin-link" id="admin-link" href="/panel-privado-gps">Ver panel admin</a>
     <button class="tracking-button" id="tracking-button" type="button" hidden>Iniciar rastreo en segundo plano</button>
     <button class="sos-button" id="sos-button" type="button" aria-label="Enviar alerta SOS">SOS</button>
     <button class="install-button" id="btn-instalar-app" type="button" hidden>Descargar App</button>
