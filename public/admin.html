@@ -131,6 +131,17 @@
             background: #1565c0;
         }
 
+        .push-button {
+            width: 100%;
+            margin-bottom: 9px;
+            padding: 10px 12px;
+            background: #6a1b9a;
+        }
+
+        .push-button:hover {
+            background: #4a148c;
+        }
+
         .connection-status {
             min-height: 18px;
             margin: 0 0 8px;
@@ -300,6 +311,7 @@
                 <span class="online-count" id="online-count">0 usuarios en línea</span>
                 <button class="show-all" id="show-all" type="button">Ver todos</button>
             </div>
+            <button class="push-button" id="enable-push" type="button" hidden>Activar notificaciones en este dispositivo</button>
             <form class="tools-row search-form" id="address-search-form">
                 <input class="search-input" id="address-search" type="search" placeholder="Buscar dirección" aria-label="Dirección para geocerca" required>
                 <button class="search-button" id="search-button" type="submit">Buscar</button>
@@ -328,7 +340,9 @@
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        const socket = io(window.location.origin, { auth: { isAdmin: true } });
+        const socket = io(window.location.origin, {
+            auth: { isAdmin: true }
+        });
         const users = new Map();
         const markers = new Map();
         const geofences = new Map();
@@ -338,9 +352,65 @@
         const count = document.getElementById('online-count');
         const status = document.getElementById('connection-status');
         const sosBanner = document.getElementById('sos-banner');
+        const enablePushButton = document.getElementById('enable-push');
         let activeRoute = null;
         let temporarySearchMarker = null;
         let temporaryMarkerTimeout = null;
+
+        // Convierte la clave VAPID pública al formato binario que requiere el navegador.
+        function decodeVapidPublicKey(encodedKey) {
+            const padding = '='.repeat((4 - encodedKey.length % 4) % 4);
+            const base64 = (encodedKey + padding).replace(/-/g, '+').replace(/_/g, '/');
+            return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+        }
+
+        // Registra este dispositivo y asocia su suscripción con la sesión del administrador.
+        async function enablePushNotifications() {
+            if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+                status.textContent = 'Este navegador no admite notificaciones push.';
+                return;
+            }
+
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission !== 'granted') {
+                    status.textContent = 'No se concedió permiso para las notificaciones.';
+                    return;
+                }
+
+                const registration = await navigator.serviceWorker.register('/sw.js');
+                const keyResponse = await fetch('/vapid-public-key', {
+                    credentials: 'same-origin'
+                });
+                if (!keyResponse.ok) {
+                    throw new Error('No se pudo obtener la clave pública VAPID.');
+                }
+                const { publicKey } = await keyResponse.json();
+                let subscription = await registration.pushManager.getSubscription();
+                if (!subscription) {
+                    subscription = await registration.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: decodeVapidPublicKey(publicKey)
+                    });
+                }
+
+                const saveResponse = await fetch('/subscribe', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(subscription)
+                });
+                if (!saveResponse.ok) {
+                    throw new Error('No se pudo guardar la suscripción push.');
+                }
+                status.textContent = 'Notificaciones push activadas en este dispositivo.';
+            } catch (error) {
+                console.error('Error al activar notificaciones push:', error);
+                status.textContent = `No se pudieron activar las notificaciones: ${error.message}`;
+            }
+        }
+
+        enablePushButton.addEventListener('click', enablePushNotifications);
 
         function hasLocation(user) {
             return Number.isFinite(user.lastLat) && Number.isFinite(user.lastLng);
@@ -593,6 +663,7 @@
                     return;
                 }
                 status.textContent = 'Panel conectado en tiempo real.';
+                enablePushButton.hidden = false;
             });
         });
 
@@ -619,7 +690,7 @@
         });
 
         socket.on('sos-alert', (alert) => {
-            console.log('Alerta SOS recibida:', alert);
+            console.log('Alerta SOS recibida en el panel:', alert);
             const user = users.get(alert.socketId) || {
                 socketId: alert.socketId,
                 roomCode: 'global',

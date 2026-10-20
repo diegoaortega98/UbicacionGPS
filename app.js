@@ -1,8 +1,32 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const webpush = require('web-push');
 const path = require('path');
 const crypto = require('crypto');
+require('dotenv').config();
+
+const configuredVapidPublicKey = process.env.VAPID_PUBLIC_KEY;
+const configuredVapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
+let vapidKeys;
+if (configuredVapidPublicKey && configuredVapidPrivateKey) {
+    vapidKeys = {
+        publicKey: configuredVapidPublicKey,
+        privateKey: configuredVapidPrivateKey
+    };
+} else if (!configuredVapidPublicKey && !configuredVapidPrivateKey) {
+    // El par temporal facilita pruebas locales; en producción configura ambas variables.
+    vapidKeys = webpush.generateVAPIDKeys();
+    console.warn('No se configuraron claves VAPID; se generó un par temporal que cambiará al reiniciar.');
+} else {
+    throw new Error('Configura VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY juntas.');
+}
+
+webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || 'mailto:admin@ubicaciongps.local',
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
+);
 
 const app = express();
 const server = http.createServer(app);
@@ -14,6 +38,7 @@ const io = new Server(server, {
 const users = new Map();
 const admins = new Set();
 const geofences = [];
+const pushSubscriptions = [];
 const ADMIN_PASSWORD = process.env.ADMIN_KEY || 'gpsadmin2026';
 const ADMIN_ROUTE = '/panel-privado-gps';
 const ADMIN_SESSION_COOKIE = 'gps_admin_session';
@@ -24,6 +49,7 @@ const MAX_HISTORY = 50;
 
 app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 
 function getCookieValue(cookieHeader, name) {
     const cookie = cookieHeader
@@ -47,6 +73,39 @@ function getValidAdminSession(token) {
         return false;
     }
     return true;
+}
+
+function requireAdminSession(req, res, next) {
+    const sessionToken = getCookieValue(req.headers.cookie, ADMIN_SESSION_COOKIE);
+    if (!getValidAdminSession(sessionToken)) {
+        return res.sendStatus(401);
+    }
+    next();
+}
+
+// Las suscripciones están en memoria y las alertas se envían en paralelo.
+async function sendSosPushNotifications(userId) {
+    const payload = JSON.stringify({
+        title: '¡ALERTA SOS!',
+        body: `Usuario ${userId} ha activado el SOS`,
+        url: ADMIN_ROUTE
+    });
+
+    await Promise.all(pushSubscriptions.map(async (subscription) => {
+        try {
+            await webpush.sendNotification(subscription, payload);
+        } catch (error) {
+            console.error('No se pudo enviar una notificación push:', error);
+            if (error.statusCode === 404 || error.statusCode === 410) {
+                const index = pushSubscriptions.findIndex(
+                    (savedSubscription) => savedSubscription.endpoint === subscription.endpoint
+                );
+                if (index !== -1) {
+                    pushSubscriptions.splice(index, 1);
+                }
+            }
+        }
+    }));
 }
 
 function renderAdminLogin(errorMessage = '') {
@@ -100,6 +159,33 @@ io.use((socket, next) => {
 
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
+});
+
+// Solo una sesión válida del panel puede consultar la clave o registrar dispositivos.
+app.get('/vapid-public-key', requireAdminSession, (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ publicKey: vapidKeys.publicKey });
+});
+
+app.post('/subscribe', requireAdminSession, (req, res) => {
+    const subscription = req.body;
+    if (!subscription
+        || typeof subscription.endpoint !== 'string'
+        || !subscription.endpoint
+        || typeof subscription.keys?.p256dh !== 'string'
+        || typeof subscription.keys?.auth !== 'string') {
+        return res.status(400).json({ error: 'Suscripción push no válida.' });
+    }
+
+    const existingIndex = pushSubscriptions.findIndex(
+        (savedSubscription) => savedSubscription.endpoint === subscription.endpoint
+    );
+    if (existingIndex === -1) {
+        pushSubscriptions.push(subscription);
+    } else {
+        pushSubscriptions[existingIndex] = subscription;
+    }
+    res.sendStatus(201);
 });
 
 app.get('/admin', (req, res) => {
@@ -211,11 +297,83 @@ function checkGeofences(user) {
     });
 }
 
+function createTrackedUser(userId) {
+    return {
+        socketId: userId,
+        roomCode: 'global',
+        lastLat: null,
+        lastLng: null,
+        lastUpdate: null,
+        history: [],
+        insideGeofences: new Set(),
+        checkedGeofences: new Set()
+    };
+}
+
+function updateUserLocation(user, latitude, longitude, sourceSocket) {
+    user.lastLat = latitude;
+    user.lastLng = longitude;
+    user.lastUpdate = new Date().toISOString();
+    user.history.push({
+        lat: user.lastLat,
+        lng: user.lastLng,
+        timestamp: user.lastUpdate
+    });
+    if (user.history.length > MAX_HISTORY) {
+        user.history.shift();
+    }
+
+    const locationEvent = {
+        id: user.socketId,
+        latitude: user.lastLat,
+        longitude: user.lastLng
+    };
+    if (sourceSocket) {
+        sourceSocket.to(user.roomCode).emit('receive-location', locationEvent);
+    } else {
+        io.to(user.roomCode).emit('receive-location', locationEvent);
+    }
+    notifyAdmins('admin-update', getUserSnapshot(user));
+    checkGeofences(user);
+}
+
+app.post('/update-location', (req, res) => {
+    if (!req.secure && req.hostname !== 'localhost' && req.hostname !== '127.0.0.1') {
+        return res.status(426).json({ error: 'El endpoint de ubicación requiere HTTPS.' });
+    }
+
+    const { deviceId, lat, lng } = req.body || {};
+    if (typeof deviceId !== 'string' || !/^[\w-]{16,80}$/.test(deviceId)
+        || !Number.isFinite(lat) || !Number.isFinite(lng)
+        || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return res.status(400).json({ error: 'Identificador o coordenadas no válidos.' });
+    }
+
+    let user = users.get(deviceId);
+    if (!user) {
+        user = createTrackedUser(deviceId);
+        users.set(deviceId, user);
+    }
+    updateUserLocation(user, lat, lng);
+    res.sendStatus(204);
+});
+
 io.on('connection', (socket) => {
     console.log('Usuario conectado:', socket.id);
     const isAdminConnection = socket.data.isAdmin === true;
     const roomCode = 'global';
-    let isAdmin = false;
+    let isAdmin = isAdminConnection;
+    const clientId = socket.handshake.auth.clientId;
+    const hasPersistentUserId = !isAdminConnection
+        && typeof clientId === 'string'
+        && /^[\w-]{16,80}$/.test(clientId);
+    const userId = hasPersistentUserId ? clientId : socket.id;
+    socket.data.userId = userId;
+    socket.data.hasPersistentUserId = hasPersistentUserId;
+
+    if (isAdminConnection) {
+        admins.add(socket.id);
+    }
 
     socket.on('join-admin', (callback) => {
         if (!isAdminConnection) {
@@ -238,17 +396,11 @@ io.on('connection', (socket) => {
 
     if (!isAdminConnection) {
         socket.join(roomCode);
-        const user = {
-            socketId: socket.id,
-            roomCode,
-            lastLat: null,
-            lastLng: null,
-            lastUpdate: null,
-            history: [],
-            insideGeofences: new Set(),
-            checkedGeofences: new Set()
-        };
-        users.set(socket.id, user);
+        let user = users.get(userId);
+        if (!user) {
+            user = createTrackedUser(userId);
+            users.set(userId, user);
+        }
         notifyAdmins('admin-update', getUserSnapshot(user));
     }
 
@@ -282,7 +434,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('send-sos', (callback) => {
-        console.log('SOS recibido de:', socket.id);
+        console.log('SOS recibido en el servidor de:', socket.id);
         if (isAdmin || isAdminConnection) {
             if (typeof callback === 'function') {
                 callback({ ok: false, error: 'Solo usuarios pueden enviar SOS.' });
@@ -290,15 +442,17 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const user = users.get(socket.id);
+        const user = users.get(userId);
+        console.log('Usuarios administradores conectados:', admins.size);
         notifyAdmins('sos-alert', {
-            socketId: socket.id,
+            socketId: userId,
             lat: user && Number.isFinite(user.lastLat) ? user.lastLat : null,
             lng: user && Number.isFinite(user.lastLng) ? user.lastLng : null,
             lastLat: user && Number.isFinite(user.lastLat) ? user.lastLat : null,
             lastLng: user && Number.isFinite(user.lastLng) ? user.lastLng : null,
             lastUpdate: user?.lastUpdate || null
         });
+        sendSosPushNotifications(userId);
         if (typeof callback === 'function') {
             callback({ ok: true });
         }
@@ -315,39 +469,33 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const user = users.get(socket.id);
+        const user = users.get(userId);
         if (!user) {
             return;
         }
 
-        user.lastLat = data.latitude;
-        user.lastLng = data.longitude;
-        user.lastUpdate = new Date().toISOString();
-        user.history.push({
-            lat: user.lastLat,
-            lng: user.lastLng,
-            timestamp: user.lastUpdate
-        });
-        // Limita el historial para mantener controlado el uso de memoria.
-        if (user.history.length > MAX_HISTORY) {
-            user.history.shift();
-        }
+        updateUserLocation(user, data.latitude, data.longitude, socket);
+    });
 
-        socket.to(roomCode).emit('receive-location', {
-            id: socket.id,
-            latitude: user.lastLat,
-            longitude: user.lastLng
-        });
-        notifyAdmins('admin-update', getUserSnapshot(user));
-        checkGeofences(user);
+    socket.on('stop-tracking', (callback) => {
+        if (socket.data.hasPersistentUserId && users.has(userId)) {
+            users.delete(userId);
+            socket.to(roomCode).emit('user-disconnected', userId);
+            notifyAdmins('admin-user-left', userId);
+        }
+        if (typeof callback === 'function') {
+            callback({ ok: true });
+        }
     });
 
     socket.on('disconnect', () => {
         admins.delete(socket.id);
         if (!isAdminConnection) {
-            socket.to(roomCode).emit('user-disconnected', socket.id);
-            users.delete(socket.id);
-            notifyAdmins('admin-user-left', socket.id);
+            if (!socket.data.hasPersistentUserId) {
+                socket.to(roomCode).emit('user-disconnected', userId);
+                users.delete(userId);
+                notifyAdmins('admin-user-left', userId);
+            }
         }
     });
 });

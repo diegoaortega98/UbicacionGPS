@@ -101,6 +101,23 @@
             background: #c62828;
         }
 
+        .tracking-button {
+            position: fixed;
+            right: 12px;
+            bottom: 112px;
+            z-index: 1000;
+            max-width: calc(100vw - 24px);
+            padding: 11px 14px;
+            border: 0;
+            border-radius: 8px;
+            background: #2e7d32;
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
+            color: #fff;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
         .own-location-marker {
             width: 20px;
             height: 20px;
@@ -119,10 +136,13 @@
     </section>
     <div id="map"></div>
     <a class="admin-link" id="admin-link" href="/panel-privado-gps">Ver panel admin</a>
+    <button class="tracking-button" id="tracking-button" type="button" hidden>Iniciar rastreo en segundo plano</button>
     <button class="sos-button" id="sos-button" type="button" aria-label="Enviar alerta SOS">SOS</button>
 
+    <script src="/native-config.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script src="/background-location.js"></script>
     <script>
         const map = L.map('map').setView([0, 0], 2);
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -130,9 +150,25 @@
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        const socket = io(window.location.origin, { autoConnect: false });
+        const isNativeApp = Boolean(window.Capacitor?.isNativePlatform());
+        const configuredBackendUrl = String(window.UBICACIONGPS_BACKEND_URL || '').replace(/\/+$/, '');
+        const backendUrl = isNativeApp ? configuredBackendUrl : window.location.origin;
+        const createDeviceId = () => crypto.randomUUID
+            ? crypto.randomUUID()
+            : Array.from(crypto.getRandomValues(new Uint8Array(24)))
+                .map((value) => value.toString(16).padStart(2, '0'))
+                .join('');
+        const deviceId = isNativeApp ? (localStorage.getItem('ubicaciongps-device-id') || createDeviceId()) : null;
+        if (isNativeApp && !localStorage.getItem('ubicaciongps-device-id')) {
+            localStorage.setItem('ubicaciongps-device-id', deviceId);
+        }
+        const socket = io(backendUrl || window.location.origin, {
+            autoConnect: false,
+            auth: isNativeApp ? { clientId: deviceId } : {}
+        });
         const markers = {};
         const statusMessage = document.getElementById('status-message');
+        const trackingButton = document.getElementById('tracking-button');
         let ownMarker = null;
         let ownLocationCentered = false;
         let pendingLocation = null;
@@ -163,14 +199,14 @@
                 ownLocationCentered = true;
             }
 
-            if (socket.connected) {
+            if (socket.connected && !isNativeApp) {
                 socket.emit('send-location', pendingLocation);
             }
             statusMessage.textContent = 'Conectado';
         }
 
         socket.on('connect', () => {
-            if (pendingLocation && !permissionDenied) {
+            if (pendingLocation && !permissionDenied && !isNativeApp) {
                 socket.emit('send-location', pendingLocation);
                 statusMessage.textContent = 'Conectado';
             }
@@ -182,15 +218,98 @@
             }
         });
 
+        async function startNativeLocationTracking() {
+            if (!backendUrl || !/^https:\/\//i.test(backendUrl)) {
+                statusMessage.textContent = 'Configura una URL HTTPS válida en public/native-config.js antes de activar el rastreo.';
+                return;
+            }
+            if (!window.BackgroundLocation) {
+                statusMessage.textContent = 'No está disponible el plugin nativo de ubicación.';
+                return;
+            }
+            if (!confirm('La app compartirá tu ubicación incluso cuando esté minimizada o la pantalla esté bloqueada. ¿Deseas continuar?')) {
+                return;
+            }
+
+            try {
+                const permissions = await window.BackgroundLocation.requestPermissions();
+                if (!permissions.backgroundLocation) {
+                    statusMessage.textContent = 'Permite el acceso a ubicación "Siempre" en los ajustes y vuelve a iniciar el rastreo.';
+                    return;
+                }
+
+                await window.BackgroundLocation.start({
+                    url: `${backendUrl}/update-location`,
+                    deviceId
+                });
+                socket.connect();
+                statusMessage.textContent = 'Rastreo en segundo plano activo. Deténlo desde el botón cuando termines.';
+                trackingButton.textContent = 'Detener rastreo en segundo plano';
+                trackingButton.dataset.active = 'true';
+            } catch (error) {
+                console.error('No se pudo iniciar el rastreo en segundo plano:', error);
+                statusMessage.textContent = `No se pudo iniciar el rastreo: ${error.message || error}`;
+            }
+        }
+
+        async function stopNativeLocationTracking() {
+            try {
+                await window.BackgroundLocation.stop();
+                if (socket.connected) {
+                    socket.emit('stop-tracking', () => socket.disconnect());
+                } else {
+                    socket.disconnect();
+                }
+                statusMessage.textContent = 'Rastreo en segundo plano detenido.';
+                trackingButton.textContent = 'Iniciar rastreo en segundo plano';
+                delete trackingButton.dataset.active;
+            } catch (error) {
+                console.error('No se pudo detener el rastreo en segundo plano:', error);
+                statusMessage.textContent = `No se pudo detener el rastreo: ${error.message || error}`;
+            }
+        }
+
+        if (isNativeApp) {
+            trackingButton.hidden = false;
+            trackingButton.addEventListener('click', () => {
+                if (trackingButton.dataset.active === 'true') {
+                    stopNativeLocationTracking();
+                } else {
+                    startNativeLocationTracking();
+                }
+            });
+
+            window.BackgroundLocation?.addListener('location', (location) => {
+                permissionDenied = false;
+                shareLocation({
+                    coords: {
+                        latitude: location.latitude,
+                        longitude: location.longitude
+                    }
+                });
+            });
+
+            if (!backendUrl) {
+                statusMessage.textContent = 'Configura la URL HTTPS del servidor en public/native-config.js para activar el rastreo.';
+            } else {
+                startNativeLocationTracking();
+            }
+        }
+
         document.getElementById('sos-button').addEventListener('click', () => {
-            if (!window.confirm('¿Enviar alerta SOS?')) {
+            console.log('Botón SOS presionado');
+            if (!confirm('¿Enviar alerta SOS?')) {
                 return;
             }
             socket.emit('send-sos');
+            console.log('Evento send-sos emitido');
             document.getElementById('sos-sent-message').hidden = false;
         });
 
         socket.on('receive-location', (data) => {
+            if (isNativeApp && data.id === deviceId) {
+                return;
+            }
             if (markers[data.id]) {
                 markers[data.id].setLatLng([data.latitude, data.longitude]);
             } else {
@@ -253,8 +372,10 @@
             });
         }
 
-        socket.connect();
-        checkLocationPermission();
+        if (!isNativeApp) {
+            socket.connect();
+            checkLocationPermission();
+        }
     </script>
 </body>
 </html>
