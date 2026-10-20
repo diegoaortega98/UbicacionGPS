@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>UbicacionGPS</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: Arial, Helvetica, sans-serif !important;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+        }
+
+        body {
+            background: #f4f4f4;
+            color: #263238;
+        }
+
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+
+        .status-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            width: min(360px, calc(100vw - 20px));
+            padding: 18px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.16);
+        }
+
+        .status-panel h1 {
+            margin: 0 0 6px;
+            font-size: 20px;
+        }
+
+        .status-message {
+            margin: 0;
+            color: #546e7a;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .sos-sent-message {
+            margin-top: 10px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            background: #c62828;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+
+        .admin-link {
+            position: fixed;
+            right: 12px;
+            bottom: 112px;
+            z-index: 1000;
+            padding: 10px 13px;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
+            color: #1565c0;
+            font-size: 13px;
+            text-decoration: none;
+        }
+
+        .sos-button {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            z-index: 1000;
+            width: 82px;
+            height: 82px;
+            border: 4px solid #fff;
+            border-radius: 50%;
+            background: #e53935;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            color: #fff;
+            cursor: pointer;
+            font-size: 21px;
+            font-weight: 700;
+        }
+
+        .sos-button:hover {
+            background: #c62828;
+        }
+
+        .own-location-marker {
+            width: 20px;
+            height: 20px;
+            border: 4px solid #fff;
+            border-radius: 50%;
+            background: #1e88e5;
+            box-shadow: 0 1px 7px rgba(0, 0, 0, 0.55);
+        }
+    </style>
+</head>
+<body>
+    <section class="status-panel" aria-label="Estado de ubicación">
+        <h1>UbicacionGPS</h1>
+        <p class="status-message" id="status-message" aria-live="polite">Solicitando permiso de ubicación...</p>
+        <div class="sos-sent-message" id="sos-sent-message" role="alert" hidden>¡Alerta SOS enviada!</div>
+    </section>
+    <div id="map"></div>
+    <a class="admin-link" id="admin-link" href="/panel-privado-gps">Ver panel admin</a>
+    <button class="sos-button" id="sos-button" type="button" aria-label="Enviar alerta SOS">SOS</button>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script>
+        const map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        const socket = io(window.location.origin, { autoConnect: false });
+        const markers = {};
+        const statusMessage = document.getElementById('status-message');
+        let ownMarker = null;
+        let ownLocationCentered = false;
+        let pendingLocation = null;
+        let permissionDenied = false;
+        const ownLocationIcon = L.divIcon({
+            className: '',
+            html: '<div class="own-location-marker"></div>',
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+        });
+
+        function shareLocation(position) {
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+            const location = [latitude, longitude];
+            pendingLocation = { latitude, longitude };
+
+            if (ownMarker) {
+                ownMarker.setLatLng(location);
+            } else {
+                ownMarker = L.marker(location, { icon: ownLocationIcon })
+                    .addTo(map)
+                    .bindTooltip('Tú estás aquí', { permanent: true, direction: 'top' });
+            }
+
+            if (!ownLocationCentered) {
+                map.setView(location, 16);
+                ownLocationCentered = true;
+            }
+
+            if (socket.connected) {
+                socket.emit('send-location', pendingLocation);
+            }
+            statusMessage.textContent = 'Conectado';
+        }
+
+        socket.on('connect', () => {
+            if (pendingLocation && !permissionDenied) {
+                socket.emit('send-location', pendingLocation);
+                statusMessage.textContent = 'Conectado';
+            }
+        });
+
+        socket.on('connect_error', () => {
+            if (!permissionDenied) {
+                statusMessage.textContent = 'No se pudo conectar con el servidor. Intenta recargar la página.';
+            }
+        });
+
+        document.getElementById('sos-button').addEventListener('click', () => {
+            if (!window.confirm('¿Enviar alerta SOS?')) {
+                return;
+            }
+            socket.emit('send-sos');
+            document.getElementById('sos-sent-message').hidden = false;
+        });
+
+        socket.on('receive-location', (data) => {
+            if (markers[data.id]) {
+                markers[data.id].setLatLng([data.latitude, data.longitude]);
+            } else {
+                markers[data.id] = L.marker([data.latitude, data.longitude]).addTo(map);
+            }
+        });
+
+        socket.on('user-disconnected', (id) => {
+            if (markers[id]) {
+                map.removeLayer(markers[id]);
+                delete markers[id];
+            }
+        });
+
+        function showLocationError(error) {
+            if (error.code === error.PERMISSION_DENIED) {
+                permissionDenied = true;
+                pendingLocation = null;
+                statusMessage.textContent = 'Has bloqueado la ubicación. Haz clic en el candado de la barra de direcciones y permite la ubicación, luego recarga la página.';
+                return;
+            }
+
+            statusMessage.textContent = `Error al obtener tu ubicación: ${error.message}`;
+        }
+
+        function watchUserLocation() {
+            navigator.geolocation.watchPosition((position) => {
+                permissionDenied = false;
+                shareLocation(position);
+            }, showLocationError, {
+                enableHighAccuracy: true,
+                maximumAge: 0
+            });
+        }
+
+        function checkLocationPermission() {
+            if (!navigator.geolocation) {
+                statusMessage.textContent = 'Error al obtener tu ubicación: este navegador no ofrece geolocalización.';
+                return;
+            }
+
+            if (!navigator.permissions || !navigator.permissions.query) {
+                watchUserLocation();
+                return;
+            }
+
+            navigator.permissions.query({ name: 'geolocation' }).then((permission) => {
+                if (permission.state === 'denied') {
+                    permissionDenied = true;
+                    statusMessage.textContent = 'Has bloqueado la ubicación. Haz clic en el candado de la barra de direcciones y permite la ubicación, luego recarga la página.';
+                    return;
+                }
+
+                if (permission.state === 'granted' || permission.state === 'prompt') {
+                    watchUserLocation();
+                }
+            }).catch(() => {
+                // Si el navegador no permite consultar el permiso, la solicitud directa puede mostrar el diálogo.
+                watchUserLocation();
+            });
+        }
+
+        socket.connect();
+        checkLocationPermission();
+    </script>
+</body>
+</html>

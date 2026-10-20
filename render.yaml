@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: ubicaciongps
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node app.js
+    healthCheckPath: /health
+    envVars:
+      - key: ADMIN_KEY
+        sync: false
