@@ -170,7 +170,16 @@ app.get('/api/geocode/autocomplete', async (req, res) => {
 
     const query = typeof req.query.text === 'string' ? req.query.text.trim() : '';
     const type = typeof req.query.type === 'string' ? req.query.type : '';
-    if (!query || query.length > 200 || (type && type !== 'city')) {
+    const hasLatitude = req.query.latitude !== undefined;
+    const hasLongitude = req.query.longitude !== undefined;
+    const latitude = typeof req.query.latitude === 'string' ? Number(req.query.latitude) : Number.NaN;
+    const longitude = typeof req.query.longitude === 'string' ? Number(req.query.longitude) : Number.NaN;
+    if (!query
+        || query.length > 200
+        || (type && type !== 'city')
+        || hasLatitude !== hasLongitude
+        || (hasLatitude && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90))
+        || (hasLongitude && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180))) {
         return res.status(400).json({ error: 'La búsqueda no es válida.' });
     }
 
@@ -192,7 +201,8 @@ app.get('/api/geocode/autocomplete', async (req, res) => {
         text: query,
         apiKey,
         limit: '5',
-        ...(type ? { type } : {})
+        ...(type ? { type } : {}),
+        ...(hasLatitude && hasLongitude ? { bias: `proximity:${longitude},${latitude}` } : {})
     });
 
     try {

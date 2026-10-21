@@ -662,13 +662,7 @@
         let isOnline = navigator.onLine;
         let isCalculatingRoute = false;
         let isRequestingCurrentLocation = false;
-        const ownLocationIcon = L.divIcon({
-            className: '',
-            html: '<div class="own-location-marker"></div>',
-            iconSize: [20, 20],
-            iconAnchor: [10, 10]
-        });
-
+        let destinationLocationRequest = null;
         function shareLocation(position) {
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
@@ -677,8 +671,9 @@
 
             if (ownMarker) {
                 ownMarker.setLatLng(location);
+                ownMarker.setIcon(createMobilityIcon(currentTransportMode));
             } else {
-                ownMarker = L.marker(location, { icon: ownLocationIcon })
+                ownMarker = L.marker(location, { icon: createMobilityIcon(currentTransportMode) })
                     .addTo(map)
                     .bindTooltip('Tú estás aquí', { permanent: true, direction: 'top' });
             }
@@ -849,8 +844,46 @@
             });
         }
 
+        function getOwnLocationCoordinates() {
+            if (!ownMarker) {
+                return null;
+            }
+            const { lat, lng } = ownMarker.getLatLng();
+            return { latitude: lat, longitude: lng };
+        }
+
+        function requestDestinationSearchLocation() {
+            if (!navigator.geolocation) {
+                return Promise.resolve(null);
+            }
+            if (!destinationLocationRequest) {
+                destinationLocationRequest = new Promise((resolve) => {
+                    navigator.geolocation.getCurrentPosition((position) => {
+                        resolve({
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude
+                        });
+                    }, (error) => {
+                        console.warn('No se pudo obtener GPS para priorizar destinos:', error.message);
+                        resolve(null);
+                    }, {
+                        enableHighAccuracy: false,
+                        maximumAge: 60000,
+                        timeout: 4000
+                    });
+                }).finally(() => {
+                    destinationLocationRequest = null;
+                });
+            }
+            return destinationLocationRequest;
+        }
+
         transportMode.addEventListener('change', () => {
             currentTransportMode = transportMode.value;
+            if (ownMarker) {
+                ownMarker.setIcon(createMobilityIcon(currentTransportMode));
+                pendingLocation.transport = currentTransportMode;
+            }
             if (socket.connected) {
                 socket.emit('set-transport', currentTransportMode);
                 if (pendingLocation && !isNativeApp) {
@@ -991,8 +1024,18 @@
         async function searchGeoapify(query, isCitySearch, signal) {
             const searchUrl = new URL('/api/geocode/autocomplete', backendUrl || window.location.origin);
             searchUrl.searchParams.set('text', query);
+            let location = null;
             if (isCitySearch) {
                 searchUrl.searchParams.set('type', 'city');
+            } else {
+                location = getOwnLocationCoordinates() || await requestDestinationSearchLocation();
+                if (signal.aborted) {
+                    return [];
+                }
+                if (location) {
+                    searchUrl.searchParams.set('latitude', String(location.latitude));
+                    searchUrl.searchParams.set('longitude', String(location.longitude));
+                }
             }
             const response = await fetch(searchUrl, { signal });
             if (!response.ok) {
@@ -1004,7 +1047,29 @@
                 throw new Error(errorMessage);
             }
             const results = await response.json();
-            return Array.isArray(results.features) ? results.features : [];
+            const features = Array.isArray(results.features) ? results.features : [];
+            if (!location) {
+                return features;
+            }
+
+            // Ordena primero los lugares más cercanos al GPS actual.
+            const distanceFromLocation = (feature) => {
+                const properties = feature.properties || {};
+                const latitude = Number(properties.lat);
+                const longitude = Number(properties.lon);
+                if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                    return Number.POSITIVE_INFINITY;
+                }
+                const radians = (degrees) => degrees * Math.PI / 180;
+                const latitudeDifference = radians(latitude - location.latitude);
+                const longitudeDifference = radians(longitude - location.longitude);
+                const haversine = Math.sin(latitudeDifference / 2) ** 2
+                    + Math.cos(radians(location.latitude))
+                    * Math.cos(radians(latitude))
+                    * Math.sin(longitudeDifference / 2) ** 2;
+                return 6371000 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+            };
+            return features.sort((first, second) => distanceFromLocation(first) - distanceFromLocation(second));
         }
 
         function showSuggestionMessage(container, message) {
