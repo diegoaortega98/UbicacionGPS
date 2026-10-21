@@ -33,6 +33,7 @@
         }
 
         body {
+            position: relative;
             overflow: hidden;
             background: var(--background);
             color: var(--text);
@@ -349,13 +350,14 @@
         }
 
         .map-view-controls {
-            position: fixed;
+            position: absolute;
             top: 50%;
             right: 14px;
-            z-index: 1000;
-            display: grid;
+            z-index: 2000;
+            display: grid !important;
             gap: 9px;
             transform: translateY(-50%);
+            pointer-events: auto;
         }
 
         .map-view-button {
@@ -371,6 +373,7 @@
             cursor: pointer;
             font-size: 25px;
             line-height: 1;
+            pointer-events: auto;
         }
 
         .map-view-button:hover {
@@ -737,6 +740,10 @@
         }
 
         const map = L.map('map').setView([0, 0], 2);
+        console.info('Estado de librerías del mapa:', {
+            leafletRoutingMachine: typeof L.Routing?.control === 'function',
+            polylineDecorator: typeof L.polylineDecorator === 'function'
+        });
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
