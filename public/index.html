@@ -254,6 +254,25 @@
             color: var(--muted);
         }
 
+        .autocomplete-field > input {
+            padding-right: 112px;
+        }
+
+        .geocode-search-button {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            z-index: 1;
+            min-height: 32px !important;
+            padding: 5px 9px !important;
+            border-radius: 7px !important;
+            font-size: 12px !important;
+        }
+
+        .geocode-search-button:disabled {
+            cursor: not-allowed !important;
+        }
+
         .route-panel input:focus,
         .route-panel select:focus {
             border-color: var(--cyan);
@@ -509,11 +528,13 @@
         <form class="route-form" id="route-form">
             <div class="autocomplete-field">
                 <input id="route-city" type="search" placeholder="¿En qué ciudad estás?" autocomplete="off" aria-label="Ciudad de origen" aria-autocomplete="list" aria-controls="city-suggestions">
+                <button class="geocode-search-button" id="search-city-button" type="button">Buscar ciudad</button>
                 <div class="suggestions-list" id="city-suggestions" role="listbox" aria-label="Sugerencias de ciudades" hidden></div>
             </div>
             <div class="route-controls">
                 <div class="autocomplete-field">
                     <input id="route-destination" type="search" placeholder="¿A dónde quieres ir?" autocomplete="off" required aria-label="Destino" aria-autocomplete="list" aria-controls="destination-suggestions">
+                    <button class="geocode-search-button" id="search-destination-button" type="button">Buscar destino</button>
                     <div class="suggestions-list" id="destination-suggestions" role="listbox" aria-label="Sugerencias de destinos" hidden></div>
                 </div>
                 <select id="transport-mode" aria-label="Medio de transporte">
@@ -601,6 +622,8 @@
         const destinationInput = document.getElementById('route-destination');
         const citySuggestions = document.getElementById('city-suggestions');
         const destinationSuggestions = document.getElementById('destination-suggestions');
+        const citySearchButton = document.getElementById('search-city-button');
+        const destinationSearchButton = document.getElementById('search-destination-button');
         const offlineBanner = document.getElementById('offline-banner');
         let ownMarker = null;
         let ownLocationCentered = false;
@@ -911,6 +934,8 @@
                 || !currentCity
                 || !selectedDestination
                 || isCalculatingRoute;
+            citySearchButton.disabled = !isOnline || citySearchButton.dataset.searching === 'true';
+            destinationSearchButton.disabled = !isOnline || destinationSearchButton.dataset.searching === 'true';
         }
 
         function updateConnectionStatus() {
@@ -927,7 +952,7 @@
         window.addEventListener('offline', updateConnectionStatus);
         updateConnectionStatus();
 
-        // Respeta el límite público de Nominatim dejando al menos un segundo entre solicitudes.
+        // Las consultas son manuales y se espacian para respetar los límites públicos de Nominatim.
         async function searchNominatim(query, isCitySearch, signal) {
             const requestTime = Math.max(Date.now(), nextNominatimRequestAt);
             nextNominatimRequestAt = requestTime + 1100;
@@ -948,10 +973,9 @@
             const searchUrl = new URL('https://nominatim.openstreetmap.org/search');
             searchUrl.search = new URLSearchParams({
                 q: query,
-                format: 'jsonv2',
-                limit: isCitySearch ? '10' : '5',
-                addressdetails: '1',
-                ...(isCitySearch ? { featuretype: 'city' } : {})
+                format: 'json',
+                limit: '5',
+                addressdetails: '1'
             });
             const response = await fetch(searchUrl, { signal });
             if (!response.ok) {
@@ -959,9 +983,10 @@
             }
             const places = await response.json();
             if (isCitySearch) {
-                // Algunos servidores ignoran featuretype en JSONv2; filtra también por tipo de lugar.
-                const cityTypes = new Set(['city', 'town', 'village', 'municipality']);
-                return places.filter((place) => place.class === 'place' && cityTypes.has(place.type));
+                // Limita las sugerencias de origen a ciudades y asentamientos, no a calles o direcciones.
+                const cityTypes = new Set(['city', 'town', 'village', 'municipality', 'hamlet']);
+                return places.filter((place) => (place.class === 'place' && cityTypes.has(place.type))
+                    || cityTypes.has(place.addresstype));
             }
             return places;
         }
@@ -975,74 +1000,97 @@
             container.hidden = false;
         }
 
-        function setupAutocomplete(input, suggestions, isCitySearch, onSelect, onInputChange) {
-            let debounceTimer = null;
+        function setupManualSearch(input, suggestions, button, isCitySearch, onSelect, onInputChange) {
             let activeController = null;
 
             input.addEventListener('input', () => {
-                window.clearTimeout(debounceTimer);
                 activeController?.abort();
                 activeController = null;
+                delete button.dataset.searching;
+                button.textContent = isCitySearch ? 'Buscar ciudad' : 'Buscar destino';
                 suggestions.hidden = true;
                 onInputChange();
-
-                const query = input.value.trim();
-                if (query.length < 3) {
-                    return;
-                }
-                if (!isOnline) {
-                    showSuggestionMessage(suggestions, 'Sin conexión a internet.');
-                    return;
-                }
-
-                debounceTimer = window.setTimeout(async () => {
-                    const controller = new AbortController();
-                    activeController = controller;
-                    showSuggestionMessage(suggestions, 'Buscando sugerencias...');
-                    try {
-                        const places = await searchNominatim(query, isCitySearch, controller.signal);
-                        if (controller.signal.aborted || input.value.trim() !== query) {
-                            return;
-                        }
-                        suggestions.replaceChildren();
-                        if (!places.length) {
-                            showSuggestionMessage(suggestions, 'No se encontraron coincidencias.');
-                            return;
-                        }
-
-                        places.forEach((place) => {
-                            const option = document.createElement('button');
-                            option.className = 'suggestion-option';
-                            option.type = 'button';
-                            option.role = 'option';
-                            option.textContent = place.display_name;
-                            option.addEventListener('mousedown', (event) => event.preventDefault());
-                            option.addEventListener('click', () => {
-                                const latitude = Number(place.lat);
-                                const longitude = Number(place.lon);
-                                if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-                                    showSuggestionMessage(suggestions, 'El lugar seleccionado no tiene coordenadas válidas.');
-                                    return;
-                                }
-                                input.value = place.display_name;
-                                suggestions.hidden = true;
-                                onSelect({ name: place.display_name, lat: latitude, lon: longitude });
-                            });
-                            suggestions.append(option);
-                        });
-                        suggestions.hidden = false;
-                    } catch (error) {
-                        if (error.name === 'AbortError') {
-                            return;
-                        }
-                        console.error('No se pudieron cargar sugerencias de Nominatim:', error);
-                        showSuggestionMessage(suggestions, 'No se pudieron cargar sugerencias. Intenta de nuevo.');
-                    }
-                }, 700);
+                updateRouteButtonState();
             });
 
+            async function search() {
+                const query = input.value.trim();
+                suggestions.hidden = true;
+                if (!isOnline) {
+                    showSuggestionMessage(suggestions, 'Sin conexión a internet. Verifica tu red.');
+                    return;
+                }
+                if (query.length < 3) {
+                    showSuggestionMessage(suggestions, 'Escribe al menos 3 caracteres para buscar.');
+                    return;
+                }
+
+                activeController?.abort();
+                const controller = new AbortController();
+                activeController = controller;
+                button.dataset.searching = 'true';
+                button.disabled = true;
+                button.textContent = 'Buscando...';
+                showSuggestionMessage(suggestions, 'Buscando sugerencias...');
+                updateRouteButtonState();
+
+                try {
+                    const places = await searchNominatim(query, isCitySearch, controller.signal);
+                    if (controller.signal.aborted || input.value.trim() !== query) {
+                        return;
+                    }
+                    suggestions.replaceChildren();
+                    if (!places.length) {
+                        showSuggestionMessage(
+                            suggestions,
+                            "No se encontró. Intenta con el nombre completo, ej: 'Cartagena, Colombia'."
+                        );
+                        return;
+                    }
+
+                    places.forEach((place) => {
+                        const option = document.createElement('button');
+                        option.className = 'suggestion-option';
+                        option.type = 'button';
+                        option.role = 'option';
+                        option.textContent = place.display_name;
+                        option.addEventListener('mousedown', (event) => event.preventDefault());
+                        option.addEventListener('click', () => {
+                            const latitude = Number(place.lat);
+                            const longitude = Number(place.lon);
+                            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                                showSuggestionMessage(suggestions, 'El lugar seleccionado no tiene coordenadas válidas.');
+                                return;
+                            }
+                            input.value = place.display_name;
+                            suggestions.hidden = true;
+                            onSelect({ name: place.display_name, lat: latitude, lon: longitude });
+                        });
+                        suggestions.append(option);
+                    });
+                    suggestions.hidden = false;
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        return;
+                    }
+                    console.error('No se pudieron cargar sugerencias de Nominatim:', error);
+                    showSuggestionMessage(suggestions, 'Error de conexión. Intenta de nuevo en unos segundos.');
+                } finally {
+                    if (activeController === controller) {
+                        activeController = null;
+                        delete button.dataset.searching;
+                        button.textContent = isCitySearch ? 'Buscar ciudad' : 'Buscar destino';
+                        updateRouteButtonState();
+                    }
+                }
+            }
+
+            button.addEventListener('click', search);
             input.addEventListener('keydown', (event) => {
-                if (event.key === 'Escape') {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    search();
+                } else if (event.key === 'Escape') {
                     suggestions.hidden = true;
                 } else if (event.key === 'ArrowDown' && !suggestions.hidden) {
                     suggestions.querySelector('button')?.focus();
@@ -1056,7 +1104,7 @@
             });
         }
 
-        setupAutocomplete(cityInput, citySuggestions, true, (city) => {
+        setupManualSearch(cityInput, citySuggestions, citySearchButton, true, (city) => {
             currentCity = city;
             try {
                 localStorage.setItem('ciudad_actual', JSON.stringify(city));
@@ -1075,7 +1123,7 @@
             updateRouteButtonState();
         });
 
-        setupAutocomplete(destinationInput, destinationSuggestions, false, (destination) => {
+        setupManualSearch(destinationInput, destinationSuggestions, destinationSearchButton, false, (destination) => {
             selectedDestination = destination;
             updateRouteButtonState();
         }, () => {
