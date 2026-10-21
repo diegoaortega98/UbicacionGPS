@@ -264,8 +264,8 @@
             left: 18px;
             z-index: 1000;
             display: grid;
-            grid-template-columns: repeat(2, minmax(96px, 1fr));
-            gap: 8px;
+            grid-template-columns: repeat(2, minmax(108px, 1fr));
+            gap: 10px 14px;
             padding: 10px;
             border: 1px solid rgba(0, 229, 255, 0.2);
             border-radius: 14px;
@@ -279,8 +279,8 @@
             min-height: 42px;
             align-items: center;
             justify-content: center;
-            gap: 7px;
-            padding: 10px 12px;
+            gap: 9px;
+            padding: 10px 14px;
             border: 1px solid rgba(0, 229, 255, 0.4);
             border-radius: 9px;
             background: rgba(28, 37, 65, 0.97);
@@ -302,6 +302,23 @@
             width: 19px;
             height: 19px;
             fill: currentColor;
+            flex: 0 0 auto;
+        }
+
+        .last-route-button {
+            grid-column: 1 / -1;
+            padding: 7px 10px;
+            border: 1px solid rgba(0, 229, 255, 0.28);
+            border-radius: 8px;
+            background: rgba(0, 229, 255, 0.08);
+            color: var(--cyan);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .last-route-button:hover {
+            background: rgba(0, 229, 255, 0.16);
         }
 
         .ios-dialog {
@@ -380,13 +397,14 @@
             .download-panel {
                 bottom: 12px;
                 left: 12px;
-                grid-template-columns: repeat(2, minmax(86px, 1fr));
-                gap: 6px;
+                grid-template-columns: repeat(2, minmax(92px, 1fr));
+                gap: 8px 12px;
                 padding: 8px;
             }
 
             .download-button {
-                padding: 9px 10px;
+                gap: 8px;
+                padding: 9px 12px;
                 font-size: 13px;
             }
 
@@ -430,12 +448,13 @@
         <!-- Enlace directo a la descarga de la aplicación nativa para Android. -->
         <a class="download-button" href="https://drive.google.com/file/d/1c215NMXoCQBBD-Qbr6B29V1jJf2v6JMY/view?usp=sharing" target="_blank" rel="noopener noreferrer" aria-label="Descargar aplicación para Android">
             <svg class="download-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 9.2 5.8 6.8l.9-.5 1.4 2.4a8 8 0 0 1 7.8 0l1.4-2.4.9.5-1.4 2.4A7 7 0 0 1 20 15H4a7 7 0 0 1 3.2-5.8ZM8 12a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8Zm8 0a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8ZM4 16h16v1a2 2 0 0 1-2 2h-1v2h-2v-2h-6v2H7v-2H6a2 2 0 0 1-2-2v-1Z"/></svg>
-            Android
+            Descargar
         </a>
         <button class="download-button" id="ios-install-button" type="button" aria-haspopup="dialog">
             <svg class="download-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.6 12.2c0-2.1 1.7-3.1 1.8-3.2-1-1.5-2.7-1.7-3.3-1.7-1.4-.1-2.7.8-3.4.8-.7 0-1.8-.8-3-.8-1.6 0-3.1.9-4 2.3-1.7 2.9-.4 7.2 1.2 9.5.8 1.1 1.7 2.3 2.9 2.2 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.9-2.2.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.4-.9-2.4-4.2ZM15.3 5.8c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.6-1 1.6-.9 2.5 1 .1 2-.5 2.5-1.1Z"/></svg>
             iOS
         </button>
+        <button class="last-route-button" id="show-last-route" type="button" hidden>Ver última ruta</button>
     </section>
     <!-- Instrucciones de instalación de la versión web en Safari para iOS. -->
     <dialog class="ios-dialog" id="ios-install-dialog" aria-labelledby="ios-dialog-title">
@@ -494,6 +513,7 @@
         const routeSummary = document.getElementById('route-summary');
         const routeStatus = document.getElementById('route-status');
         const routeSubmit = document.getElementById('route-submit');
+        const lastRouteButton = document.getElementById('show-last-route');
         let ownMarker = null;
         let ownLocationCentered = false;
         let pendingLocation = null;
@@ -522,7 +542,11 @@
             }
 
             if (!ownLocationCentered) {
-                map.setView(location, 16);
+                if (routeLayer) {
+                    map.fitBounds(routeLayer.getBounds(), { padding: [32, 32] });
+                } else {
+                    map.setView(location, 16);
+                }
                 ownLocationCentered = true;
             }
 
@@ -709,6 +733,86 @@
             return remainingMinutes ? `${hours} h ${remainingMinutes} min` : `${hours} h`;
         }
 
+        function drawRoute(coordinates, fitBounds = true) {
+            if (routeLayer) {
+                map.removeLayer(routeLayer);
+            }
+            routeLayer = L.polyline(coordinates, {
+                color: '#00e5ff',
+                weight: 6,
+                opacity: 0.92
+            }).addTo(map);
+            if (fitBounds) {
+                map.fitBounds(routeLayer.getBounds(), { padding: [32, 32] });
+            }
+        }
+
+        function isValidRouteCoordinates(coordinates) {
+            return Array.isArray(coordinates)
+                && coordinates.length >= 2
+                && coordinates.every((point) => Array.isArray(point)
+                    && point.length === 2
+                    && Number.isFinite(point[0])
+                    && Number.isFinite(point[1])
+                    && point[0] >= -90
+                    && point[0] <= 90
+                    && point[1] >= -180
+                    && point[1] <= 180);
+        }
+
+        function readSavedRoute() {
+            const savedRoute = localStorage.getItem('ruta_guardada');
+            if (!savedRoute) {
+                return null;
+            }
+
+            const route = JSON.parse(savedRoute);
+            if (!route || !isValidRouteCoordinates(route.coordinates)) {
+                throw new Error('La ruta guardada no contiene coordenadas válidas.');
+            }
+            return route;
+        }
+
+        function showSavedRoute(route) {
+            drawRoute(route.coordinates);
+            routeSummary.hidden = false;
+            routeSummary.textContent = route.distance && route.duration
+                ? `Última ruta: ${formatRouteDistance(route.distance)} · ${formatRouteDuration(route.duration)}`
+                : 'Se muestra la última ruta guardada.';
+            routeStatus.textContent = routeSummary.textContent;
+        }
+
+        // Recupera y dibuja la última ruta aunque el dispositivo no tenga conexión.
+        try {
+            const savedRoute = readSavedRoute();
+            if (savedRoute) {
+                lastRouteButton.hidden = false;
+                showSavedRoute(savedRoute);
+            }
+        } catch (error) {
+            console.error('No se pudo recuperar la ruta guardada:', error);
+            routeSummary.hidden = false;
+            routeSummary.textContent = 'No se pudo recuperar la última ruta guardada.';
+            routeStatus.textContent = routeSummary.textContent;
+        }
+
+        lastRouteButton.addEventListener('click', () => {
+            try {
+                const savedRoute = readSavedRoute();
+                if (!savedRoute) {
+                    lastRouteButton.hidden = true;
+                    routeSummary.hidden = false;
+                    routeSummary.textContent = 'Todavía no hay una ruta guardada.';
+                    return;
+                }
+                showSavedRoute(savedRoute);
+            } catch (error) {
+                console.error('No se pudo mostrar la ruta guardada:', error);
+                routeSummary.hidden = false;
+                routeSummary.textContent = 'No se pudo mostrar la última ruta guardada.';
+            }
+        });
+
         document.getElementById('route-form').addEventListener('submit', async (event) => {
             event.preventDefault();
             const destination = document.getElementById('route-destination').value.trim();
@@ -742,7 +846,9 @@
                     throw new Error('No se encontró ese destino. Prueba con otro nombre o dirección.');
                 }
 
-                const [originLatitude, originLongitude] = ownMarker.getLatLng().toArray();
+                const originCoordinates = ownMarker.getLatLng();
+                const originLatitude = originCoordinates.lat;
+                const originLongitude = originCoordinates.lng;
                 const target = places[0];
                 // OSRM agrupa moto y carro en driving y usa perfiles propios para bici y peatón.
                 const profile = currentTransportMode === 'walking'
@@ -761,19 +867,27 @@
                     throw new Error('No hay una ruta disponible para ese destino y medio de transporte.');
                 }
 
-                if (routeLayer) {
-                    map.removeLayer(routeLayer);
+                // OSRM entrega cada punto como [longitud, latitud]; Leaflet espera [latitud, longitud].
+                const routeCoordinates = route.geometry.coordinates.map(([longitude, latitude]) => [latitude, longitude]);
+                if (!isValidRouteCoordinates(routeCoordinates)) {
+                    throw new Error('El servicio de rutas devolvió coordenadas no válidas.');
                 }
-                routeLayer = L.geoJSON(route.geometry, {
-                    style: {
-                        color: '#00e5ff',
-                        weight: 6,
-                        opacity: 0.92
-                    }
-                }).addTo(map);
-                map.fitBounds(routeLayer.getBounds(), { padding: [32, 32] });
+                drawRoute(routeCoordinates);
                 routeSummary.textContent = `Ruta: ${formatRouteDistance(route.distance)} · ${formatRouteDuration(route.duration)}`;
                 routeStatus.textContent = routeSummary.textContent;
+                try {
+                    localStorage.setItem('ruta_guardada', JSON.stringify({
+                        coordinates: routeCoordinates,
+                        distance: route.distance,
+                        duration: route.duration,
+                        savedAt: new Date().toISOString()
+                    }));
+                    lastRouteButton.hidden = false;
+                } catch (error) {
+                    console.error('No se pudo guardar la ruta para verla sin conexión:', error);
+                    routeSummary.textContent += ' (no se pudo guardar para uso sin conexión)';
+                    routeStatus.textContent = routeSummary.textContent;
+                }
             } catch (error) {
                 console.error('No se pudo calcular la ruta:', error);
                 routeSummary.textContent = error.message || 'Ocurrió un error al calcular la ruta.';
