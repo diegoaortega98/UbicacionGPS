@@ -109,28 +109,6 @@
             box-shadow: 0 9px 28px rgba(255, 0, 51, 0.48), 0 4px 16px rgba(32, 43, 60, 0.24);
         }
 
-        .tracking-button {
-            display: none !important;
-            position: fixed;
-            right: 12px;
-            bottom: 112px;
-            z-index: 1000;
-            max-width: calc(100vw - 24px);
-            padding: 11px 14px;
-            border: 1px solid rgba(32, 43, 60, 0.08);
-            border-radius: 12px;
-            background: #fff;
-            box-shadow: 0 4px 16px rgba(32, 43, 60, 0.16);
-            color: var(--cyan);
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 700;
-        }
-
-        .tracking-button:hover {
-            background: #f1f6ff;
-        }
-
         .download-button {
             position: fixed;
             left: 18px;
@@ -368,13 +346,12 @@
         }
 
         .map-view-controls {
-            position: absolute;
-            top: 50%;
-            right: 14px;
+            position: fixed;
+            right: 18px;
+            bottom: 112px;
             z-index: 2000;
             display: grid !important;
-            gap: 9px;
-            transform: translateY(-50%);
+            gap: 10px;
             pointer-events: auto;
         }
 
@@ -625,7 +602,8 @@
             }
 
             .map-view-controls {
-                right: 12px;
+                right: 14px;
+                bottom: 100px;
             }
 
             .directions-panel {
@@ -682,12 +660,11 @@
     <a class="admin-lock" id="admin-link" href="/panel-privado-gps" aria-label="Abrir panel de administrador" title="Panel de administrador">🔒</a>
     <div class="offline-banner" id="offline-banner" role="alert" hidden>Sin conexión a internet. Verifica tu red.</div>
     <p class="visually-hidden" id="status-message" aria-live="polite"></p>
-    <button class="tracking-button" id="tracking-button" type="button" hidden>Iniciar rastreo en segundo plano</button>
     <button class="sos-button" id="sos-button" type="button" aria-label="Enviar alerta SOS">SOS</button>
     <nav class="map-view-controls" aria-label="Controles de vista del mapa">
-        <button class="map-view-button" id="center-current-location" type="button" aria-label="Mi ubicación" title="Mi ubicación">⌖</button>
-        <button class="map-view-button" id="fit-full-route" type="button" aria-label="Ruta completa" title="Ruta completa" disabled>↗</button>
-        <button class="map-view-button" id="zoom-near-location" type="button" aria-label="Vista cercana" title="Vista cercana">＋</button>
+        <button class="map-view-button" id="center-current-location" type="button" aria-label="Mi ubicación" title="Mi ubicación">◎</button>
+        <button class="map-view-button" id="fit-full-route" type="button" aria-label="Ruta completa" title="Ruta completa" disabled>⛶</button>
+        <button class="map-view-button" id="zoom-near-location" type="button" aria-label="Vista cercana" title="Vista cercana">⌕</button>
     </nav>
     <!-- El selector de transporte también identifica el modo actual de este usuario. -->
     <section class="route-panel" aria-label="Buscador de rutas">
@@ -792,7 +769,6 @@
         });
         const markers = {};
         const statusMessage = document.getElementById('status-message');
-        const trackingButton = document.getElementById('tracking-button');
         const transportMode = document.getElementById('transport-mode');
         const routeSummary = document.getElementById('route-summary');
         const routeStatus = document.getElementById('route-status');
@@ -920,41 +896,13 @@
                 await window.BackgroundLocation.start();
                 socket.connect();
                 statusMessage.textContent = 'Rastreo en segundo plano activo.';
-                trackingButton.textContent = 'Detener rastreo en segundo plano';
-                trackingButton.dataset.active = 'true';
             } catch (error) {
                 console.error('No se pudo iniciar el rastreo en segundo plano:', error);
                 statusMessage.textContent = `No se pudo iniciar el rastreo: ${error.message || error}`;
             }
         }
 
-        async function stopNativeLocationTracking() {
-            try {
-                await window.BackgroundLocation.stop();
-                if (socket.connected) {
-                    socket.emit('stop-tracking', () => socket.disconnect());
-                } else {
-                    socket.disconnect();
-                }
-                statusMessage.textContent = 'Rastreo en segundo plano detenido.';
-                trackingButton.textContent = 'Iniciar rastreo en segundo plano';
-                delete trackingButton.dataset.active;
-            } catch (error) {
-                console.error('No se pudo detener el rastreo en segundo plano:', error);
-                statusMessage.textContent = `No se pudo detener el rastreo: ${error.message || error}`;
-            }
-        }
-
         if (isNativeApp) {
-            trackingButton.hidden = false;
-            trackingButton.addEventListener('click', () => {
-                if (trackingButton.dataset.active === 'true') {
-                    stopNativeLocationTracking();
-                } else {
-                    startNativeLocationTracking();
-                }
-            });
-
             window.BackgroundLocation?.addListener('onLocation', (location) => {
                 permissionDenied = false;
                 shareLocation({
