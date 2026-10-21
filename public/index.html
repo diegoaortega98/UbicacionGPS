@@ -221,6 +221,19 @@
             gap: 8px;
         }
 
+        .use-location-button {
+            justify-self: start;
+            padding: 8px 11px !important;
+            border: 1px solid rgba(0, 229, 255, 0.42) !important;
+            background: rgba(28, 37, 65, 0.96) !important;
+            color: var(--cyan) !important;
+            font-size: 12px !important;
+        }
+
+        .use-location-button:hover {
+            background: rgba(0, 229, 255, 0.14) !important;
+        }
+
         .route-controls {
             display: grid;
             grid-template-columns: minmax(0, 1fr) 150px auto;
@@ -525,6 +538,7 @@
                 <input id="route-city" type="search" placeholder="¿En qué ciudad estás?" autocomplete="off" aria-label="Ciudad de origen" aria-autocomplete="list" aria-controls="city-suggestions">
                 <div class="suggestions-list" id="city-suggestions" role="listbox" aria-label="Sugerencias de ciudades" hidden></div>
             </div>
+            <button class="use-location-button" id="use-current-location" type="button">Usar mi ubicación actual</button>
             <div class="route-controls">
                 <div class="autocomplete-field">
                     <input id="route-destination" type="search" placeholder="¿A dónde quieres ir?" autocomplete="off" required aria-label="Destino" aria-autocomplete="list" aria-controls="destination-suggestions">
@@ -613,6 +627,7 @@
         const lastRouteButton = document.getElementById('show-last-route');
         const cityInput = document.getElementById('route-city');
         const destinationInput = document.getElementById('route-destination');
+        const useCurrentLocationButton = document.getElementById('use-current-location');
         const citySuggestions = document.getElementById('city-suggestions');
         const destinationSuggestions = document.getElementById('destination-suggestions');
         const offlineBanner = document.getElementById('offline-banner');
@@ -626,6 +641,7 @@
         let selectedDestination = null;
         let isOnline = navigator.onLine;
         let isCalculatingRoute = false;
+        let isRequestingCurrentLocation = false;
         const ownLocationIcon = L.divIcon({
             className: '',
             html: '<div class="own-location-marker"></div>',
@@ -660,6 +676,7 @@
                 socket.emit('send-location', pendingLocation);
             }
             statusMessage.textContent = 'Conectado';
+            updateRouteButtonState();
         }
 
         socket.on('connect', () => {
@@ -839,7 +856,7 @@
             return remainingMinutes ? `${hours} h ${remainingMinutes} min` : `${hours} h`;
         }
 
-        function drawRoute(coordinates, fitBounds = true) {
+        function drawRoute(coordinates, extraCoordinates = [], fitBounds = true) {
             if (routeLayer) {
                 map.removeLayer(routeLayer);
             }
@@ -849,21 +866,31 @@
                 opacity: 0.92
             }).addTo(map);
             if (fitBounds) {
-                map.fitBounds(routeLayer.getBounds(), { padding: [32, 32] });
+                const bounds = routeLayer.getBounds();
+                extraCoordinates.forEach((point) => {
+                    if (isValidCoordinate(point)) {
+                        bounds.extend(point);
+                    }
+                });
+                map.fitBounds(bounds, { padding: [32, 32] });
             }
         }
 
         function isValidRouteCoordinates(coordinates) {
             return Array.isArray(coordinates)
                 && coordinates.length >= 2
-                && coordinates.every((point) => Array.isArray(point)
-                    && point.length === 2
-                    && Number.isFinite(point[0])
-                    && Number.isFinite(point[1])
-                    && point[0] >= -90
-                    && point[0] <= 90
-                    && point[1] >= -180
-                    && point[1] <= 180);
+                && coordinates.every(isValidCoordinate);
+        }
+
+        function isValidCoordinate(point) {
+            return Array.isArray(point)
+                && point.length === 2
+                && Number.isFinite(point[0])
+                && Number.isFinite(point[1])
+                && point[0] >= -90
+                && point[0] <= 90
+                && point[1] >= -180
+                && point[1] <= 180;
         }
 
         function readSavedRoute() {
@@ -880,7 +907,7 @@
         }
 
         function showSavedRoute(route) {
-            drawRoute(route.coordinates);
+            drawRoute(route.coordinates, [route.origin, route.destination].filter(isValidCoordinate));
             routeSummary.hidden = false;
             routeSummary.textContent = route.distance && route.duration
                 ? `Última ruta: ${formatRouteDistance(route.distance)} · ${formatRouteDuration(route.duration)}`
@@ -921,9 +948,10 @@
 
         function updateRouteButtonState() {
             routeSubmit.disabled = !isOnline
-                || !currentCity
+                || !ownMarker
                 || !selectedDestination
                 || isCalculatingRoute;
+            useCurrentLocationButton.disabled = isRequestingCurrentLocation;
         }
 
         function updateConnectionStatus() {
@@ -1015,17 +1043,19 @@
                                 return;
                             }
 
+                            const formattedName = properties.formatted || properties.name || `${latitude}, ${longitude}`;
+                            const selectedLabel = `${formattedName} (${latitude}, ${longitude})`;
                             const option = document.createElement('button');
                             option.className = 'suggestion-option';
                             option.type = 'button';
                             option.role = 'option';
-                            option.textContent = properties.formatted || properties.name || `${latitude}, ${longitude}`;
+                            option.textContent = selectedLabel;
                             option.addEventListener('mousedown', (event) => event.preventDefault());
                             option.addEventListener('click', () => {
-                                input.value = option.textContent;
+                                input.value = selectedLabel;
                                 suggestions.hidden = true;
                                 onSelect({
-                                    name: option.textContent,
+                                    name: formattedName,
                                     lat: latitude,
                                     lon: longitude
                                 });
@@ -1093,6 +1123,55 @@
             updateRouteButtonState();
         });
 
+        function setCurrentLocationAsOrigin() {
+            if (!ownMarker) {
+                routeSummary.hidden = false;
+                routeSummary.textContent = 'Esperando tu ubicación GPS para calcular la ruta...';
+                routeStatus.textContent = routeSummary.textContent;
+                if (!navigator.geolocation) {
+                    statusMessage.textContent = 'Este navegador no ofrece geolocalización.';
+                    return;
+                }
+
+                isRequestingCurrentLocation = true;
+                useCurrentLocationButton.disabled = true;
+                navigator.geolocation.getCurrentPosition((position) => {
+                    permissionDenied = false;
+                    shareLocation(position);
+                    finishCurrentLocationRequest();
+                }, (error) => {
+                    showLocationError(error);
+                    routeSummary.textContent = 'Esperando tu ubicación GPS para calcular la ruta...';
+                    finishCurrentLocationRequest();
+                }, {
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
+                    timeout: 15000
+                });
+                return;
+            }
+
+            const coordinates = ownMarker.getLatLng();
+            cityInput.value = `Mi ubicación actual (${coordinates.lat}, ${coordinates.lng})`;
+            currentCity = {
+                name: 'Mi ubicación actual',
+                lat: coordinates.lat,
+                lon: coordinates.lng
+            };
+            citySuggestions.hidden = true;
+            routeSummary.hidden = false;
+            routeSummary.textContent = 'El origen de la ruta será tu ubicación GPS actual.';
+            routeStatus.textContent = routeSummary.textContent;
+            updateRouteButtonState();
+        }
+
+        function finishCurrentLocationRequest() {
+            isRequestingCurrentLocation = false;
+            updateRouteButtonState();
+        }
+
+        useCurrentLocationButton.addEventListener('click', setCurrentLocationAsOrigin);
+
         // Restaura la ciudad elegida para que siga disponible al volver a abrir la página.
         try {
             const savedCity = JSON.parse(localStorage.getItem('ciudad_actual') || 'null');
@@ -1119,9 +1198,15 @@
                 routeSummary.textContent = 'Sin conexión a internet. Verifica tu red para calcular una ruta.';
                 return;
             }
-            if (!currentCity || !selectedDestination) {
+            if (!selectedDestination) {
                 routeSummary.hidden = false;
-                routeSummary.textContent = 'Selecciona una ciudad y un destino de las sugerencias.';
+                routeSummary.textContent = 'Selecciona un destino de las sugerencias.';
+                return;
+            }
+            if (!ownMarker) {
+                routeSummary.hidden = false;
+                routeSummary.textContent = 'Esperando tu ubicación GPS para calcular la ruta...';
+                routeStatus.textContent = routeSummary.textContent;
                 return;
             }
 
@@ -1131,13 +1216,18 @@
             routeSummary.textContent = 'Buscando destino y calculando la ruta...';
             routeStatus.textContent = 'Buscando la ruta solicitada.';
             try {
+                // El origen se toma siempre del último punto GPS propio, nunca de la ciudad buscada.
+                const origin = ownMarker.getLatLng();
+                const originLatitude = origin.lat;
+                const originLongitude = origin.lng;
+                const destination = selectedDestination;
                 // OSRM agrupa moto y carro en driving y usa perfiles propios para bici y peatón.
                 const profile = currentTransportMode === 'walking'
                     ? 'foot'
                     : currentTransportMode === 'cycling'
                         ? 'cycling'
                         : 'driving';
-                const routeUrl = `https://router.project-osrm.org/route/v1/${profile}/${currentCity.lon},${currentCity.lat};${selectedDestination.lon},${selectedDestination.lat}?overview=full&geometries=geojson`;
+                const routeUrl = `https://router.project-osrm.org/route/v1/${profile}/${originLongitude},${originLatitude};${destination.lon},${destination.lat}?overview=full&geometries=geojson`;
                 const routeResponse = await fetch(routeUrl);
                 if (!routeResponse.ok) {
                     throw new Error('No se pudo consultar el servicio de rutas.');
@@ -1153,12 +1243,17 @@
                 if (!isValidRouteCoordinates(routeCoordinates)) {
                     throw new Error('El servicio de rutas devolvió coordenadas no válidas.');
                 }
-                drawRoute(routeCoordinates);
+                drawRoute(routeCoordinates, [
+                    [originLatitude, originLongitude],
+                    [destination.lat, destination.lon]
+                ]);
                 routeSummary.textContent = `Ruta: ${formatRouteDistance(route.distance)} · ${formatRouteDuration(route.duration)}`;
                 routeStatus.textContent = routeSummary.textContent;
                 try {
                     localStorage.setItem('ruta_guardada', JSON.stringify({
                         coordinates: routeCoordinates,
+                        origin: [originLatitude, originLongitude],
+                        destination: [destination.lat, destination.lon],
                         distance: route.distance,
                         duration: route.duration,
                         savedAt: new Date().toISOString()
@@ -1194,6 +1289,12 @@
 
         socket.on('receive-location', (data) => {
             if (isNativeApp && data.id === deviceId) {
+                shareLocation({
+                    coords: {
+                        latitude: data.latitude,
+                        longitude: data.longitude
+                    }
+                });
                 return;
             }
             const markerIcon = createMobilityIcon(data.transport);
