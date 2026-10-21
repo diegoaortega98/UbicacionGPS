@@ -1,5 +1,8 @@
 {
   "appId": "com.ubicaciongps.app",
   "appName": "UbicacionGPS",
-  "webDir": "public"
+  "webDir": "public",
+  "android": {
+    "useLegacyBridge": true
+  }
 }

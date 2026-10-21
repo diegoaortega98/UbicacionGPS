@@ -301,6 +301,7 @@ function createTrackedUser(userId) {
     return {
         socketId: userId,
         roomCode: 'global',
+        transport: 'walking',
         lastLat: null,
         lastLng: null,
         lastUpdate: null,
@@ -310,7 +311,12 @@ function createTrackedUser(userId) {
     };
 }
 
-function updateUserLocation(user, latitude, longitude, sourceSocket) {
+const allowedTransports = new Set(['walking', 'cycling', 'motorcycle', 'driving']);
+
+function updateUserLocation(user, latitude, longitude, sourceSocket, transport) {
+    if (allowedTransports.has(transport)) {
+        user.transport = transport;
+    }
     user.lastLat = latitude;
     user.lastLng = longitude;
     user.lastUpdate = new Date().toISOString();
@@ -326,7 +332,8 @@ function updateUserLocation(user, latitude, longitude, sourceSocket) {
     const locationEvent = {
         id: user.socketId,
         latitude: user.lastLat,
-        longitude: user.lastLng
+        longitude: user.lastLng,
+        transport: user.transport
     };
     if (sourceSocket) {
         sourceSocket.to(user.roomCode).emit('receive-location', locationEvent);
@@ -358,7 +365,7 @@ app.post('/update-location', (req, res) => {
         user = createTrackedUser(deviceId);
         users.set(deviceId, user);
     }
-    updateUserLocation(user, lat, lng);
+    updateUserLocation(user, lat, lng, undefined, body.transport ?? location.transport);
     res.sendStatus(204);
 });
 
@@ -478,7 +485,18 @@ io.on('connection', (socket) => {
             return;
         }
 
-        updateUserLocation(user, data.latitude, data.longitude, socket);
+        updateUserLocation(user, data.latitude, data.longitude, socket, data.transport);
+    });
+
+    socket.on('set-transport', (transport) => {
+        if (isAdmin || isAdminConnection || !allowedTransports.has(transport)) {
+            return;
+        }
+
+        const user = users.get(userId);
+        if (user) {
+            user.transport = transport;
+        }
     });
 
     socket.on('stop-tracking', (callback) => {

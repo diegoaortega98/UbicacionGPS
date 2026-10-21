@@ -131,23 +131,26 @@
             background: #24304f;
         }
 
-        .install-button {
+        .download-button {
             position: fixed;
             left: 18px;
             bottom: 18px;
             z-index: 1000;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
             padding: 12px 16px;
             border: 1px solid rgba(0, 229, 255, 0.4);
             border-radius: 8px;
             background: rgba(28, 37, 65, 0.97);
             box-shadow: 0 0 16px rgba(0, 229, 255, 0.22);
             color: var(--cyan);
-            cursor: pointer;
+            text-decoration: none;
             font-size: 14px;
             font-weight: 700;
         }
 
-        .install-button:hover {
+        .download-button:hover {
             background: #24304f;
             box-shadow: 0 0 22px rgba(0, 229, 255, 0.4);
         }
@@ -177,6 +180,227 @@
             background: rgba(11, 19, 43, 0.78) !important;
             color: var(--muted) !important;
         }
+
+        .route-panel {
+            position: fixed;
+            top: 16px;
+            left: 50%;
+            z-index: 1000;
+            display: grid;
+            width: min(640px, calc(100vw - 96px));
+            gap: 10px;
+            padding: 14px;
+            transform: translateX(-50%);
+            border: 1px solid rgba(0, 229, 255, 0.24);
+            border-radius: 14px;
+            background: rgba(11, 19, 43, 0.9);
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(12px);
+        }
+
+        .route-controls {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 160px auto;
+            gap: 8px;
+        }
+
+        .route-panel input,
+        .route-panel select,
+        .route-panel button {
+            min-width: 0;
+            min-height: 42px;
+            padding: 10px 12px;
+            border: 1px solid rgba(160, 170, 178, 0.3);
+            border-radius: 9px;
+            font-size: 14px;
+        }
+
+        .route-panel input,
+        .route-panel select {
+            background: rgba(28, 37, 65, 0.96);
+            color: var(--text);
+        }
+
+        .route-panel input::placeholder {
+            color: var(--muted);
+        }
+
+        .route-panel input:focus,
+        .route-panel select:focus {
+            border-color: var(--cyan);
+            outline: 2px solid rgba(0, 229, 255, 0.2);
+        }
+
+        .route-panel button {
+            border-color: var(--cyan);
+            background: var(--cyan);
+            color: var(--background);
+            cursor: pointer;
+            font-weight: 700;
+            white-space: nowrap;
+            transition: background 150ms ease, box-shadow 150ms ease;
+        }
+
+        .route-panel button:hover {
+            background: #69f1ff;
+            box-shadow: 0 0 18px rgba(0, 229, 255, 0.35);
+        }
+
+        .route-panel button:disabled {
+            cursor: wait;
+            opacity: 0.65;
+        }
+
+        .route-summary {
+            margin: 0;
+            color: var(--cyan);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .download-panel {
+            position: fixed;
+            bottom: 18px;
+            left: 18px;
+            z-index: 1000;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(96px, 1fr));
+            gap: 8px;
+            padding: 10px;
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            border-radius: 14px;
+            background: rgba(11, 19, 43, 0.9);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .download-button {
+            display: inline-flex;
+            min-height: 42px;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            padding: 10px 12px;
+            border: 1px solid rgba(0, 229, 255, 0.4);
+            border-radius: 9px;
+            background: rgba(28, 37, 65, 0.97);
+            box-shadow: 0 0 12px rgba(0, 229, 255, 0.12);
+            color: var(--cyan);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 700;
+            text-decoration: none;
+            transition: background 150ms ease, box-shadow 150ms ease;
+        }
+
+        .download-button:hover {
+            background: #24304f;
+            box-shadow: 0 0 18px rgba(0, 229, 255, 0.32);
+        }
+
+        .download-icon {
+            width: 19px;
+            height: 19px;
+            fill: currentColor;
+        }
+
+        .ios-dialog {
+            width: min(420px, calc(100vw - 32px));
+            padding: 24px;
+            border: 1px solid rgba(0, 229, 255, 0.38);
+            border-radius: 16px;
+            background: #111c38;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+            color: var(--text);
+        }
+
+        .ios-dialog::backdrop {
+            background: rgba(3, 8, 22, 0.72);
+            backdrop-filter: blur(4px);
+        }
+
+        .ios-dialog h2 {
+            margin: 0 0 12px;
+            color: var(--cyan);
+            font-size: 20px;
+        }
+
+        .ios-dialog p,
+        .ios-dialog li {
+            color: #d4deea;
+            font-size: 14px;
+            line-height: 1.55;
+        }
+
+        .ios-dialog ol {
+            padding-left: 22px;
+        }
+
+        .ios-dialog button {
+            display: block;
+            min-height: 40px;
+            margin: 18px 0 0 auto;
+            padding: 9px 18px;
+            border: 0;
+            border-radius: 9px;
+            background: var(--cyan);
+            color: var(--background);
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .mobility-marker {
+            display: grid;
+            width: 42px;
+            height: 42px;
+            place-items: center;
+            border: 2px solid rgba(0, 229, 255, 0.8);
+            border-radius: 50%;
+            background: rgba(11, 19, 43, 0.9);
+            box-shadow: 0 0 16px rgba(0, 229, 255, 0.5), 0 3px 10px rgba(0, 0, 0, 0.5);
+            font-size: 24px;
+            line-height: 1;
+        }
+
+        @media (max-width: 760px) {
+            .route-panel {
+                top: 70px;
+                width: calc(100vw - 24px);
+                padding: 10px;
+            }
+
+            .route-controls {
+                grid-template-columns: minmax(0, 1fr) minmax(112px, 0.8fr);
+            }
+
+            .route-panel button {
+                grid-column: 1 / -1;
+            }
+
+            .download-panel {
+                bottom: 12px;
+                left: 12px;
+                grid-template-columns: repeat(2, minmax(86px, 1fr));
+                gap: 6px;
+                padding: 8px;
+            }
+
+            .download-button {
+                padding: 9px 10px;
+                font-size: 13px;
+            }
+
+            .sos-button {
+                right: 14px;
+                bottom: 14px;
+                width: 72px;
+                height: 72px;
+            }
+
+            .leaflet-control-zoom {
+                margin-top: 128px !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -186,50 +410,57 @@
     <p class="visually-hidden" id="status-message" aria-live="polite"></p>
     <button class="tracking-button" id="tracking-button" type="button" hidden>Iniciar rastreo en segundo plano</button>
     <button class="sos-button" id="sos-button" type="button" aria-label="Enviar alerta SOS">SOS</button>
-    <button class="install-button" id="btn-instalar-app" type="button" hidden>Descargar App</button>
+    <!-- El selector de transporte también identifica el modo actual de este usuario. -->
+    <section class="route-panel" aria-label="Buscador de rutas">
+        <form id="route-form">
+            <div class="route-controls">
+                <input id="route-destination" type="search" placeholder="¿A dónde quieres ir?" autocomplete="off" required aria-label="Destino">
+                <select id="transport-mode" aria-label="Medio de transporte">
+                    <option value="walking">🚶 A pie</option>
+                    <option value="cycling">🚲 En bici</option>
+                    <option value="motorcycle">🏍️ En moto</option>
+                    <option value="driving">🚗 En carro</option>
+                </select>
+                <button id="route-submit" type="submit">Buscar Ruta</button>
+            </div>
+        </form>
+        <p class="route-summary" id="route-summary" aria-live="polite" hidden></p>
+    </section>
+    <section class="download-panel" aria-label="Descargar la aplicación">
+        <!-- Enlace directo a la descarga de la aplicación nativa para Android. -->
+        <a class="download-button" href="https://drive.google.com/file/d/1c215NMXoCQBBD-Qbr6B29V1jJf2v6JMY/view?usp=sharing" target="_blank" rel="noopener noreferrer" aria-label="Descargar aplicación para Android">
+            <svg class="download-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 9.2 5.8 6.8l.9-.5 1.4 2.4a8 8 0 0 1 7.8 0l1.4-2.4.9.5-1.4 2.4A7 7 0 0 1 20 15H4a7 7 0 0 1 3.2-5.8ZM8 12a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8Zm8 0a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8ZM4 16h16v1a2 2 0 0 1-2 2h-1v2h-2v-2h-6v2H7v-2H6a2 2 0 0 1-2-2v-1Z"/></svg>
+            Android
+        </a>
+        <button class="download-button" id="ios-install-button" type="button" aria-haspopup="dialog">
+            <svg class="download-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.6 12.2c0-2.1 1.7-3.1 1.8-3.2-1-1.5-2.7-1.7-3.3-1.7-1.4-.1-2.7.8-3.4.8-.7 0-1.8-.8-3-.8-1.6 0-3.1.9-4 2.3-1.7 2.9-.4 7.2 1.2 9.5.8 1.1 1.7 2.3 2.9 2.2 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.9-2.2.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.4-.9-2.4-4.2ZM15.3 5.8c.6-.7 1-1.7.9-2.7-.9 0-1.9.6-2.5 1.3-.6.6-1 1.6-.9 2.5 1 .1 2-.5 2.5-1.1Z"/></svg>
+            iOS
+        </button>
+    </section>
+    <!-- Instrucciones de instalación de la versión web en Safari para iOS. -->
+    <dialog class="ios-dialog" id="ios-install-dialog" aria-labelledby="ios-dialog-title">
+        <h2 id="ios-dialog-title">Instalar en iPhone o iPad</h2>
+        <p>Abre esta página en Safari y sigue estos pasos:</p>
+        <ol>
+            <li>Toca el botón <strong>Compartir</strong> de Safari.</li>
+            <li>Desplázate y selecciona <strong>Añadir a pantalla de inicio</strong>.</li>
+            <li>Confirma con <strong>Añadir</strong>. El icono aparecerá en tu pantalla de inicio.</li>
+        </ol>
+        <button id="ios-dialog-close" type="button">Entendido</button>
+    </dialog>
+    <p class="visually-hidden" id="route-status" aria-live="polite"></p>
 
     <script src="/native-config.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="/background-location.bundle.js"></script>
     <script>
-        // Registra el service worker para habilitar la caché offline y las notificaciones push.
+        // Mantiene la caché offline y las notificaciones push de la aplicación web.
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').catch((error) => {
                 console.error('No se pudo registrar el service worker:', error);
             });
         }
-
-        let deferredPrompt;
-        const installButton = document.getElementById('btn-instalar-app');
-
-        window.addEventListener('beforeinstallprompt', (event) => {
-            event.preventDefault();
-            deferredPrompt = event;
-            installButton.hidden = false;
-        });
-
-        installButton.addEventListener('click', async () => {
-            if (!deferredPrompt) {
-                installButton.hidden = true;
-                return;
-            }
-
-            try {
-                await deferredPrompt.prompt();
-                await deferredPrompt.userChoice;
-            } catch (error) {
-                console.error('No se pudo mostrar el diálogo para instalar la app:', error);
-            } finally {
-                deferredPrompt = null;
-                installButton.hidden = true;
-            }
-        });
-
-        window.addEventListener('appinstalled', () => {
-            deferredPrompt = null;
-            installButton.hidden = true;
-        });
 
         const map = L.map('map').setView([0, 0], 2);
         L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -259,10 +490,16 @@
         const markers = {};
         const statusMessage = document.getElementById('status-message');
         const trackingButton = document.getElementById('tracking-button');
+        const transportMode = document.getElementById('transport-mode');
+        const routeSummary = document.getElementById('route-summary');
+        const routeStatus = document.getElementById('route-status');
+        const routeSubmit = document.getElementById('route-submit');
         let ownMarker = null;
         let ownLocationCentered = false;
         let pendingLocation = null;
         let permissionDenied = false;
+        let routeLayer = null;
+        let currentTransportMode = transportMode.value;
         const ownLocationIcon = L.divIcon({
             className: '',
             html: '<div class="own-location-marker"></div>',
@@ -274,7 +511,7 @@
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
             const location = [latitude, longitude];
-            pendingLocation = { latitude, longitude };
+            pendingLocation = { latitude, longitude, transport: currentTransportMode };
 
             if (ownMarker) {
                 ownMarker.setLatLng(location);
@@ -296,6 +533,7 @@
         }
 
         socket.on('connect', () => {
+            socket.emit('set-transport', currentTransportMode);
             if (pendingLocation && !permissionDenied && !isNativeApp) {
                 socket.emit('send-location', pendingLocation);
                 statusMessage.textContent = 'Conectado';
@@ -427,14 +665,147 @@
             console.log('Evento send-sos emitido');
         });
 
+        const mobilityIcons = {
+            walking: '🚶',
+            cycling: '🚲',
+            motorcycle: '🏍️',
+            driving: '🚗'
+        };
+
+        function createMobilityIcon(transport) {
+            const emoji = mobilityIcons[transport] || mobilityIcons.walking;
+            return L.divIcon({
+                className: '',
+                html: `<div class="mobility-marker" aria-hidden="true">${emoji}</div>`,
+                iconSize: [42, 42],
+                iconAnchor: [21, 21]
+            });
+        }
+
+        transportMode.addEventListener('change', () => {
+            currentTransportMode = transportMode.value;
+            if (socket.connected) {
+                socket.emit('set-transport', currentTransportMode);
+                if (pendingLocation && !isNativeApp) {
+                    pendingLocation.transport = currentTransportMode;
+                    socket.emit('send-location', pendingLocation);
+                }
+            }
+        });
+
+        function formatRouteDistance(meters) {
+            return meters >= 1000
+                ? `${(meters / 1000).toFixed(1)} km`
+                : `${Math.round(meters)} m`;
+        }
+
+        function formatRouteDuration(seconds) {
+            const minutes = Math.max(1, Math.round(seconds / 60));
+            if (minutes < 60) {
+                return `${minutes} min`;
+            }
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            return remainingMinutes ? `${hours} h ${remainingMinutes} min` : `${hours} h`;
+        }
+
+        document.getElementById('route-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const destination = document.getElementById('route-destination').value.trim();
+            if (!destination) {
+                return;
+            }
+            if (!ownMarker) {
+                routeSummary.hidden = false;
+                routeSummary.textContent = 'Espera a que se detecte tu ubicación para buscar la ruta.';
+                return;
+            }
+
+            routeSubmit.disabled = true;
+            routeSummary.hidden = false;
+            routeSummary.textContent = 'Buscando destino y calculando la ruta...';
+            routeStatus.textContent = 'Buscando la ruta solicitada.';
+            try {
+                // Nominatim convierte el texto escrito en coordenadas de destino.
+                const geocodingUrl = new URL('https://nominatim.openstreetmap.org/search');
+                geocodingUrl.search = new URLSearchParams({
+                    q: destination,
+                    format: 'jsonv2',
+                    limit: '1'
+                });
+                const geocodingResponse = await fetch(geocodingUrl);
+                if (!geocodingResponse.ok) {
+                    throw new Error('No se pudo consultar el servicio de búsqueda de lugares.');
+                }
+                const places = await geocodingResponse.json();
+                if (!places.length) {
+                    throw new Error('No se encontró ese destino. Prueba con otro nombre o dirección.');
+                }
+
+                const [originLatitude, originLongitude] = ownMarker.getLatLng().toArray();
+                const target = places[0];
+                // OSRM agrupa moto y carro en driving y usa perfiles propios para bici y peatón.
+                const profile = currentTransportMode === 'walking'
+                    ? 'foot'
+                    : currentTransportMode === 'cycling'
+                        ? 'cycling'
+                        : 'driving';
+                const routeUrl = `https://router.project-osrm.org/route/v1/${profile}/${originLongitude},${originLatitude};${target.lon},${target.lat}?overview=full&geometries=geojson`;
+                const routeResponse = await fetch(routeUrl);
+                if (!routeResponse.ok) {
+                    throw new Error('No se pudo consultar el servicio de rutas.');
+                }
+                const routeData = await routeResponse.json();
+                const route = routeData.routes && routeData.routes[0];
+                if (!route || !route.geometry || !Array.isArray(route.geometry.coordinates)) {
+                    throw new Error('No hay una ruta disponible para ese destino y medio de transporte.');
+                }
+
+                if (routeLayer) {
+                    map.removeLayer(routeLayer);
+                }
+                routeLayer = L.geoJSON(route.geometry, {
+                    style: {
+                        color: '#00e5ff',
+                        weight: 6,
+                        opacity: 0.92
+                    }
+                }).addTo(map);
+                map.fitBounds(routeLayer.getBounds(), { padding: [32, 32] });
+                routeSummary.textContent = `Ruta: ${formatRouteDistance(route.distance)} · ${formatRouteDuration(route.duration)}`;
+                routeStatus.textContent = routeSummary.textContent;
+            } catch (error) {
+                console.error('No se pudo calcular la ruta:', error);
+                routeSummary.textContent = error.message || 'Ocurrió un error al calcular la ruta.';
+                routeStatus.textContent = routeSummary.textContent;
+            } finally {
+                routeSubmit.disabled = false;
+            }
+        });
+
+        const iosInstallDialog = document.getElementById('ios-install-dialog');
+        document.getElementById('ios-install-button').addEventListener('click', () => {
+            iosInstallDialog.showModal();
+        });
+        document.getElementById('ios-dialog-close').addEventListener('click', () => {
+            iosInstallDialog.close();
+        });
+        iosInstallDialog.addEventListener('click', (event) => {
+            if (event.target === iosInstallDialog) {
+                iosInstallDialog.close();
+            }
+        });
+
         socket.on('receive-location', (data) => {
             if (isNativeApp && data.id === deviceId) {
                 return;
             }
+            const markerIcon = createMobilityIcon(data.transport);
             if (markers[data.id]) {
                 markers[data.id].setLatLng([data.latitude, data.longitude]);
+                markers[data.id].setIcon(markerIcon);
             } else {
-                markers[data.id] = L.marker([data.latitude, data.longitude]).addTo(map);
+                markers[data.id] = L.marker([data.latitude, data.longitude], { icon: markerIcon }).addTo(map);
             }
         });
 
