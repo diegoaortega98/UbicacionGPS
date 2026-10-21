@@ -222,6 +222,23 @@
             gap: 8px;
         }
 
+        .route-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 2px;
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .route-brand img {
+            width: 40px;
+            height: 40px;
+            border-radius: 11px;
+            object-fit: cover;
+        }
+
         .use-location-button {
             justify-self: start;
             padding: 8px 11px !important;
@@ -673,6 +690,10 @@
     </nav>
     <!-- El selector de transporte también identifica el modo actual de este usuario. -->
     <section class="route-panel" aria-label="Buscador de rutas">
+        <div class="route-brand">
+            <img src="/ubicaciongps-logo.png" alt="">
+            <span>UbicaciónGPS</span>
+        </div>
         <form class="route-form" id="route-form">
             <div class="autocomplete-field">
                 <input id="route-city" type="search" placeholder="¿En qué ciudad estás?" autocomplete="off" aria-label="Ciudad de origen" aria-autocomplete="list" aria-controls="city-suggestions">

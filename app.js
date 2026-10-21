@@ -300,6 +300,7 @@ function notifyAdmins(event, data) {
 function getUserSnapshot(user) {
     return {
         socketId: user.socketId,
+        displayName: user.displayName || '',
         roomCode: user.roomCode,
         lastLat: user.lastLat,
         lastLng: user.lastLng,
@@ -348,7 +349,7 @@ function checkGeofences(user) {
 
         notifyAdmins('geofence-alert', {
             socketId: user.socketId,
-            userName: user.socketId,
+            userName: user.displayName || user.socketId,
             name: geofence.name,
             action: isInside ? 'entró' : 'salió',
             lat: user.lastLat,
@@ -361,6 +362,7 @@ function checkGeofences(user) {
 function createTrackedUser(userId) {
     return {
         socketId: userId,
+        displayName: '',
         roomCode: 'global',
         transport: 'walking',
         lastLat: null,
@@ -518,6 +520,7 @@ io.on('connection', (socket) => {
         console.log('Usuarios administradores conectados:', admins.size);
         notifyAdmins('sos-alert', {
             socketId: userId,
+            userName: user && user.displayName ? user.displayName : userId,
             lat: user && Number.isFinite(user.lastLat) ? user.lastLat : null,
             lng: user && Number.isFinite(user.lastLng) ? user.lastLng : null,
             lastLat: user && Number.isFinite(user.lastLat) ? user.lastLat : null,
@@ -557,6 +560,28 @@ io.on('connection', (socket) => {
         const user = users.get(userId);
         if (user) {
             user.transport = transport;
+        }
+    });
+
+    socket.on('rename-device', (data, callback) => {
+        const name = typeof data?.name === 'string' ? data.name.trim() : '';
+        const targetId = typeof data?.socketId === 'string' ? data.socketId : '';
+        const user = isAdmin && targetId ? users.get(targetId) : null;
+        if (!user || !name || name.length > 40) {
+            if (typeof callback === 'function') {
+                callback({
+                    ok: false,
+                    error: 'Selecciona un dispositivo y usa un nombre de 1 a 40 caracteres.'
+                });
+            }
+            return;
+        }
+
+        user.displayName = name;
+        const snapshot = getUserSnapshot(user);
+        notifyAdmins('admin-update', snapshot);
+        if (typeof callback === 'function') {
+            callback({ ok: true, user: snapshot });
         }
     });
 

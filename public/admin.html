@@ -98,6 +98,15 @@
             letter-spacing: 0.04em;
         }
 
+        .brand-logo {
+            width: 40px;
+            height: 40px;
+            flex: 0 0 auto;
+            border-radius: 11px;
+            object-fit: cover;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+        }
+
         .top-bar-right {
             gap: 20px;
             color: var(--muted);
@@ -281,6 +290,33 @@
             animation: alert-flash 1s infinite alternate;
         }
 
+        .alert-banner-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+        }
+
+        .close-alert {
+            padding: 2px 6px;
+            background: rgba(0, 0, 0, 0.18);
+            color: #fff;
+            font-size: 18px;
+            line-height: 1.2;
+        }
+
+        .sound-button {
+            margin-bottom: 10px;
+            padding: 9px 12px;
+            border: 1px solid rgba(0, 229, 255, 0.25);
+            background: rgba(0, 229, 255, 0.08);
+            color: var(--cyan);
+        }
+
+        .sound-button:hover:not(:disabled) {
+            background: rgba(0, 229, 255, 0.16);
+        }
+
         [hidden] {
             display: none !important;
         }
@@ -311,16 +347,44 @@
 
         .user-title {
             min-width: 0;
-            justify-content: space-between;
+            align-items: flex-start;
             gap: 8px;
             margin-bottom: 5px;
+        }
+
+        .device-identity {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .device-name {
+            margin: 0 0 3px;
+            font-size: 14px;
+            font-weight: 700;
+            overflow-wrap: anywhere;
         }
 
         .user-id {
             min-width: 0;
             margin: 0;
-            font-size: 14px;
-            font-weight: 700;
+            color: var(--muted);
+            font-size: 10px;
+            overflow-wrap: anywhere;
+        }
+
+        .rename-user {
+            flex: 0 0 32px;
+            width: 32px;
+            height: 32px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--muted);
+            font-size: 16px;
+        }
+
+        .rename-user:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
         }
 
         .vehicle-icon {
@@ -628,6 +692,12 @@
                 font-size: 15px;
             }
 
+            .brand-logo {
+                width: 32px;
+                height: 32px;
+                border-radius: 9px;
+            }
+
             .back-link {
                 padding: 8px;
                 font-size: 11px;
@@ -680,6 +750,7 @@
     <header class="top-bar">
         <div class="top-bar-left">
             <a class="back-link" href="/">‹ Volver al Mapa</a>
+            <img class="brand-logo" src="/ubicaciongps-logo.png" alt="Logo de UbicaciónGPS">
             <h1>Panel de Control</h1>
         </div>
         <div class="top-bar-right">
@@ -690,6 +761,7 @@
             <time id="current-time" aria-label="Hora actual"></time>
         </div>
     </header>
+    <audio id="alarm-audio" src="/alarm.wav" preload="auto"></audio>
     <main class="dashboard">
         <aside class="admin-panel">
             <div class="panel-heading">
@@ -705,13 +777,19 @@
                     <button class="show-all" id="show-all" type="button">Ver todos en mapa</button>
                 </div>
                 <button class="push-button" id="enable-push" type="button" hidden>Activar notificaciones en este dispositivo</button>
+                <button class="sound-button" id="enable-alarm" type="button">Activar sonido de alertas</button>
                 <form class="geofence-form" id="address-search-form">
                     <input class="search-input" id="address-search" type="search" placeholder="Dirección para geocerca" aria-label="Dirección para geocerca" required>
                     <button class="search-button" id="search-button" type="submit">Buscar</button>
                 </form>
                 <p class="connection-status" id="connection-status" aria-live="polite">Conectando al servidor...</p>
             </div>
-            <div class="sos-banner" id="sos-banner" role="alert" hidden></div>
+            <div class="sos-banner" id="sos-banner" role="alert" hidden>
+                <div class="alert-banner-content">
+                    <span id="alert-banner-message"></span>
+                    <button class="close-alert" id="close-alert" type="button" aria-label="Cerrar alerta">×</button>
+                </div>
+            </div>
             <div class="user-list" id="user-list" aria-live="polite">
                 <div class="empty-list">Esperando usuarios...</div>
             </div>
@@ -769,6 +847,9 @@
         const count = document.getElementById('online-count');
         const status = document.getElementById('connection-status');
         const sosBanner = document.getElementById('sos-banner');
+        const alertBannerMessage = document.getElementById('alert-banner-message');
+        const alarmAudio = document.getElementById('alarm-audio');
+        const enableAlarmButton = document.getElementById('enable-alarm');
         const enablePushButton = document.getElementById('enable-push');
         const deviceSearch = document.getElementById('device-search');
         const connectionIndicator = document.getElementById('connection-indicator');
@@ -777,6 +858,44 @@
         let activeRoute = null;
         let temporarySearchMarker = null;
         let temporaryMarkerTimeout = null;
+        let alarmAudioEnabled = false;
+
+        function playAlarm() {
+            if (!alarmAudioEnabled) {
+                status.textContent = 'Activa el sonido de alertas para escuchar la alarma.';
+                return;
+            }
+            alarmAudio.currentTime = 0;
+            alarmAudio.play().catch((error) => {
+                console.error('No se pudo reproducir el sonido de alarma:', error);
+                status.textContent = 'No se pudo reproducir la alarma. Vuelve a activar el sonido.';
+                alarmAudioEnabled = false;
+                enableAlarmButton.disabled = false;
+                enableAlarmButton.textContent = 'Activar sonido de alertas';
+            });
+        }
+
+        enableAlarmButton.addEventListener('click', () => {
+            alarmAudio.currentTime = 0;
+            alarmAudio.play().then(() => {
+                alarmAudioEnabled = true;
+                enableAlarmButton.disabled = true;
+                enableAlarmButton.textContent = 'Sonido de alertas activado';
+                status.textContent = 'Sonido de alertas activado.';
+            }).catch((error) => {
+                console.error('No se pudo activar el sonido de alarma:', error);
+                status.textContent = 'No se pudo activar el sonido. Comprueba el volumen del dispositivo.';
+            });
+        });
+
+        document.getElementById('close-alert').addEventListener('click', () => {
+            sosBanner.hidden = true;
+        });
+
+        function showAlertBanner(message) {
+            alertBannerMessage.textContent = message;
+            sosBanner.hidden = false;
+        }
 
         function updateClock() {
             const now = new Date();
@@ -949,8 +1068,13 @@
 
             const query = deviceSearch.value.trim().toLocaleLowerCase('es');
             const visibleUsers = Array.from(users.values())
-                .filter((user) => user.socketId.toLocaleLowerCase('es').includes(query))
-                .sort((first, second) => first.socketId.localeCompare(second.socketId));
+                .filter((user) => (
+                    user.socketId.toLocaleLowerCase('es').includes(query)
+                    || (user.displayName || '').toLocaleLowerCase('es').includes(query)
+                ))
+                .sort((first, second) => (
+                    (first.displayName || first.socketId).localeCompare(second.displayName || second.socketId)
+                ));
 
             if (visibleUsers.length === 0) {
                 const empty = document.createElement('div');
@@ -967,11 +1091,49 @@
                     const title = document.createElement('div');
                     title.className = 'user-title';
 
-                    const id = document.createElement('div');
+                    const identity = document.createElement('div');
+                    identity.className = 'device-identity';
+                    const name = document.createElement('p');
+                    name.className = 'device-name';
+                    name.textContent = user.displayName || 'Dispositivo';
+                    const id = document.createElement('p');
                     id.className = 'user-id';
-                    id.textContent = `🚘 Dispositivo · ${user.socketId}`;
+                    id.textContent = `ID · ${user.socketId}`;
+                    identity.append(name, id);
+                    title.appendChild(identity);
 
-                    title.appendChild(id);
+                    const rename = document.createElement('button');
+                    rename.className = 'rename-user';
+                    rename.type = 'button';
+                    rename.textContent = '✎';
+                    rename.setAttribute('aria-label', `Editar nombre de ${user.displayName || user.socketId}`);
+                    rename.title = 'Editar nombre del dispositivo';
+                    rename.addEventListener('click', () => {
+                        const requestedName = window.prompt(
+                            'Nombre para este dispositivo (máximo 40 caracteres):',
+                            user.displayName || ''
+                        );
+                        if (requestedName === null) {
+                            return;
+                        }
+                        const displayName = requestedName.trim();
+                        if (!displayName || displayName.length > 40) {
+                            status.textContent = 'El nombre debe tener entre 1 y 40 caracteres.';
+                            return;
+                        }
+                        socket.emit('rename-device', {
+                            socketId: user.socketId,
+                            name: displayName
+                        }, (result) => {
+                            if (!result?.ok || !result.user) {
+                                status.textContent = result?.error || 'No se pudo cambiar el nombre del dispositivo.';
+                                return;
+                            }
+                            status.textContent = `Dispositivo renombrado como "${displayName}".`;
+                            updateUser(result.user);
+                        });
+                    });
+                    title.appendChild(rename);
                     if (user.sosActive) {
                         const sosState = document.createElement('span');
                         sosState.className = 'sos-state';
@@ -1237,7 +1399,10 @@
 
         socket.on('geofence-alert', (alert) => {
             const userName = alert.userName || alert.socketId;
-            addNotification(`${userName} ${alert.action} de la zona "${alert.name}".`);
+            const message = `¡ALERTA DE GEOFENCE! ${userName} ${alert.action} de la zona "${alert.name}".`;
+            showAlertBanner(message);
+            playAlarm();
+            addNotification(message, 'sos');
         });
 
         socket.on('sos-alert', (alert) => {
@@ -1252,12 +1417,14 @@
             user.lastUpdate = alert.lastUpdate;
             user.sosActive = true;
             updateUser(user);
-            sosBanner.textContent = `¡ALERTA SOS! Usuario: ${alert.socketId}`;
-            sosBanner.hidden = false;
+            const userName = alert.userName || user.displayName || alert.socketId;
+            const message = `¡ALERTA SOS! Dispositivo: ${userName}`;
+            showAlertBanner(message);
+            playAlarm();
             if (hasLocation(user)) {
                 map.setView([user.lastLat, user.lastLng], 16);
             }
-            addNotification(`¡ALERTA SOS! Usuario: ${alert.socketId}`, 'sos');
+            addNotification(message, 'sos');
         });
 
         socket.on('connect_error', () => {
