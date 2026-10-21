@@ -15,3 +15,5 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         value: mailto:admin@ubicaciongps.com
+      - key: GEOAPIFY_API_KEY
+        sync: false

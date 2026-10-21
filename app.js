@@ -39,6 +39,7 @@ const users = new Map();
 const admins = new Set();
 const geofences = [];
 const pushSubscriptions = [];
+const geocodeRateLimits = new Map();
 const ADMIN_PASSWORD = process.env.ADMIN_KEY || 'gpsadmin2026';
 const ADMIN_ROUTE = '/panel-privado-gps';
 const ADMIN_SESSION_COOKIE = 'gps_admin_session';
@@ -159,6 +160,56 @@ io.use((socket, next) => {
 
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
+});
+
+app.get('/api/geocode/autocomplete', async (req, res) => {
+    const apiKey = process.env.GEOAPIFY_API_KEY;
+    if (!apiKey) {
+        return res.status(503).json({ error: 'El servicio de búsqueda no está configurado.' });
+    }
+
+    const query = typeof req.query.text === 'string' ? req.query.text.trim() : '';
+    const type = typeof req.query.type === 'string' ? req.query.type : '';
+    if (!query || query.length > 200 || (type && type !== 'city')) {
+        return res.status(400).json({ error: 'La búsqueda no es válida.' });
+    }
+
+    const now = Date.now();
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const rateLimit = geocodeRateLimits.get(clientIp);
+    if (rateLimit && rateLimit.resetAt > now && rateLimit.count >= 120) {
+        res.set('Retry-After', String(Math.ceil((rateLimit.resetAt - now) / 1000)));
+        return res.status(429).json({ error: 'Se alcanzó el límite temporal de búsquedas.' });
+    }
+    if (!rateLimit || rateLimit.resetAt <= now) {
+        geocodeRateLimits.set(clientIp, { count: 1, resetAt: now + 60_000 });
+    } else {
+        rateLimit.count += 1;
+    }
+
+    const geocodeUrl = new URL('https://api.geoapify.com/v1/geocode/autocomplete');
+    geocodeUrl.search = new URLSearchParams({
+        text: query,
+        apiKey,
+        limit: '5',
+        ...(type ? { type } : {})
+    });
+
+    try {
+        const response = await fetch(geocodeUrl, {
+            headers: { Accept: 'application/json' }
+        });
+        if (!response.ok) {
+            console.error('Geoapify rechazó la búsqueda con el estado:', response.status);
+            return res.status(502).json({ error: 'El proveedor de búsqueda no pudo completar la consulta.' });
+        }
+
+        res.set('Cache-Control', 'private, max-age=30');
+        return res.json(await response.json());
+    } catch (error) {
+        console.error('No se pudo consultar Geoapify:', error);
+        return res.status(502).json({ error: 'No se pudo conectar con el proveedor de búsqueda.' });
+    }
 });
 
 // Solo una sesión válida del panel puede consultar la clave o registrar dispositivos.
