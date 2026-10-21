@@ -162,6 +162,17 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
+// Permite que la app nativa consulte el autocompletado desde su propio origen.
+app.use('/api/geocode', (req, res, next) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+    }
+    next();
+});
+
 app.get('/api/geocode/autocomplete', async (req, res) => {
     const apiKey = process.env.GEOAPIFY_API_KEY;
     if (!apiKey) {

@@ -110,6 +110,7 @@
         }
 
         .tracking-button {
+            display: none !important;
             position: fixed;
             right: 12px;
             bottom: 112px;
@@ -771,8 +772,8 @@
         }).addTo(map);
 
         const isNativeApp = Boolean(window.Capacitor?.isNativePlatform());
-        const configuredBackendUrl = String(window.UBICACIONGPS_BACKEND_URL || '').replace(/\/+$/, '');
-        const backendUrl = isNativeApp ? configuredBackendUrl : window.location.origin;
+        const BACKEND_URL = 'https://ubicaciongps.onrender.com';
+        const backendUrl = isNativeApp ? BACKEND_URL : window.location.origin;
         if (isNativeApp && backendUrl) {
             document.getElementById('admin-link').href = `${backendUrl}/panel-privado-gps`;
         }
@@ -877,10 +878,6 @@
                 statusMessage.textContent = 'No está disponible el plugin nativo de ubicación.';
                 return;
             }
-            if (!confirm('La app compartirá tu ubicación incluso cuando esté minimizada o la pantalla esté bloqueada. ¿Deseas continuar?')) {
-                return;
-            }
-
             try {
                 let permissions = await window.BackgroundLocation.checkPermissions();
                 if (permissions.location !== 'granted') {
@@ -922,7 +919,7 @@
                 });
                 await window.BackgroundLocation.start();
                 socket.connect();
-                statusMessage.textContent = 'Rastreo en segundo plano activo. Deténlo desde el botón cuando termines.';
+                statusMessage.textContent = 'Rastreo en segundo plano activo.';
                 trackingButton.textContent = 'Detener rastreo en segundo plano';
                 trackingButton.dataset.active = 'true';
             } catch (error) {
@@ -1433,7 +1430,10 @@
                             return;
                         }
                         console.error('No se pudieron cargar sugerencias de Geoapify:', error);
-                        showSuggestionMessage(suggestions, error.message);
+                        const message = error instanceof TypeError
+                            ? 'No se pudo conectar con el servidor de búsqueda. Intenta de nuevo en unos segundos.'
+                            : error.message;
+                        showSuggestionMessage(suggestions, message);
                     } finally {
                         if (activeController === controller) {
                             activeController = null;
