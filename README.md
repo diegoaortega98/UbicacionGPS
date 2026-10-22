@@ -24,6 +24,19 @@ Genera las claves VAPID con `node generate-keys.js` y configura `VAPID_PUBLIC_KE
 
 En el panel privado, pulsa **Activar notificaciones en este dispositivo** y concede permiso. Las notificaciones push requieren HTTPS (localhost también es válido para pruebas) y un navegador/dispositivo compatible. Las suscripciones se conservan en memoria y hay que activarlas de nuevo en cada reinicio del servidor.
 
+## Push nativo FCM para Android
+
+La app Capacitor registra el token FCM al iniciarse y lo asocia con el ID estable del dispositivo. El servidor envía mensajes de chat del administrador y avisos de entrada/salida de geocerca mediante Firebase Cloud Messaging, incluso cuando la app está cerrada. El servidor conserva los tokens en memoria; tras un reinicio, la app debe abrirse una vez para volver a registrarlos.
+
+1. Crea un proyecto en [Firebase Console](https://console.firebase.google.com/) y agrega una aplicación Android con el ID `com.gpsfamilia.app`.
+2. Descarga `google-services.json` y guárdalo como `android/app/google-services.json`. Ese archivo está ignorado por Git: no lo subas al repositorio.
+3. En Firebase Console, crea una clave privada de cuenta de servicio desde **Configuración del proyecto > Cuentas de servicio > Generar nueva clave privada**. Guarda el JSON fuera del repositorio.
+4. Configura el contenido JSON de la cuenta de servicio como la variable de entorno `FIREBASE_SERVICE_ACCOUNT` del servidor. En Render, usa **Environment**; en desarrollo local, ponla en `.env` como una sola línea JSON. No uses ni publiques esa clave en el frontend.
+5. Ejecuta `npm run cap:sync` y recompila/instala la aplicación Android. En Android 13 o posterior, acepta el permiso de notificaciones cuando la app lo solicite.
+6. Reinicia el servidor con `FIREBASE_SERVICE_ACCOUNT` configurada. Si falta la credencial, la app puede obtener un token, pero el servidor registra que FCM está desactivado y no podrá enviar los avisos nativos.
+
+El SDK de Firebase Admin usa exclusivamente credenciales del servidor. El token FCM de cada dispositivo se envía al servidor por Socket.IO. El plugin y el registro nativo también se compilan mediante `npm run build:frontend` y `npm run cap:sync`. Para iOS se requiere configurar APNs en Firebase y Apple Developer por separado.
+
 ## Publicar en GitHub
 
 1. Crea un repositorio vacío en GitHub llamado `UbicacionGPS` (sin README, licencia ni `.gitignore` inicial).

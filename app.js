@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const webpush = require('web-push');
+const firebaseAdmin = require('firebase-admin');
 const path = require('path');
 const crypto = require('crypto');
 require('dotenv').config();
@@ -22,11 +23,64 @@ if (configuredVapidPublicKey && configuredVapidPrivateKey) {
     throw new Error('Configura VAPID_PUBLIC_KEY y VAPID_PRIVATE_KEY juntas.');
 }
 
+// Envía FCM a todos los dispositivos registrados para el mismo usuario.
+async function sendFirebasePushNotification(userId, { title, body, url = '/' }) {
+    const tokens = firebasePushTokens.get(userId);
+    if (!firebaseMessaging || !tokens?.size) {
+        return;
+    }
+
+    await Promise.all(Array.from(tokens, async (token) => {
+        try {
+            await firebaseMessaging.send({
+                token,
+                notification: { title, body },
+                data: { url },
+                android: {
+                    priority: 'high',
+                    notification: { channelId: 'default' }
+                }
+            });
+        } catch (error) {
+            console.error('No se pudo enviar una notificación FCM:', error);
+            if ([
+                'messaging/registration-token-not-registered',
+                'messaging/invalid-registration-token'
+            ].includes(error.code)) {
+                tokens.delete(token);
+                if (tokens.size === 0) {
+                    firebasePushTokens.delete(userId);
+                }
+            }
+        }
+    }));
+}
+
 webpush.setVapidDetails(
     process.env.VAPID_SUBJECT || 'mailto:admin@ubicaciongps.local',
     vapidKeys.publicKey,
     vapidKeys.privateKey
 );
+
+let firebaseMessaging = null;
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        firebaseAdmin.initializeApp({
+            credential: firebaseAdmin.credential.cert(serviceAccount)
+        });
+        firebaseMessaging = firebaseAdmin.messaging();
+    } catch (error) {
+        throw new Error(`No se pudo inicializar Firebase Admin: ${error.message}`);
+    }
+} else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    firebaseAdmin.initializeApp({
+        credential: firebaseAdmin.credential.applicationDefault()
+    });
+    firebaseMessaging = firebaseAdmin.messaging();
+} else {
+    console.warn('FCM desactivado: configura FIREBASE_SERVICE_ACCOUNT o GOOGLE_APPLICATION_CREDENTIALS.');
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -37,6 +91,8 @@ const io = new Server(server, {
 });
 const users = new Map();
 const admins = new Set();
+const firebasePushTokens = new Map();
+const chatHistory = [];
 // Conserva las últimas ubicaciones y horas de desconexión mientras el servidor está activo.
 const offlineUsers = Object.create(null);
 const geofences = [];
@@ -54,6 +110,7 @@ const MAX_HISTORY = 20;
 const MAX_EVENT_LOG = 50;
 const MAX_SOS_HISTORY = 100;
 const MAX_HEAT_HISTORY = 3000;
+const MAX_CHAT_HISTORY = 1000;
 const HEAT_SAMPLE_INTERVAL = 30 * 1000;
 const HEAT_HISTORY_TTL = 24 * 60 * 60 * 1000;
 const STATIONARY_ALERT_DELAY = 5 * 60 * 1000;
@@ -426,6 +483,12 @@ function checkGeofences(user) {
         };
         notifyAdmins('geofence-notification', notification);
         io.to(`user:${user.socketId}`).emit('geofence-notification', notification);
+        void sendFirebasePushNotification(user.socketId, {
+            title: isInside ? 'Has llegado a una zona' : 'Has salido de una zona',
+            body: isInside
+                ? `Has llegado a ${geofence.name}.`
+                : `Has salido de ${geofence.name}.`
+        });
         notifyAdmins('geofence-alert', notification);
         if (isPolygon && !isInside) {
             notifyAdmins('safe-zone-alert', notification);
@@ -654,6 +717,7 @@ io.on('connection', (socket) => {
             offlineUsers: Object.values(offlineUsers),
             eventLog: eventLog.slice(),
             sosHistory: sosHistory.slice(),
+            chatHistory: chatHistory.slice(-MAX_CHAT_HISTORY),
             geofences
         });
         if (typeof callback === 'function') {
@@ -678,6 +742,55 @@ io.on('connection', (socket) => {
         }
         notifyAdmins('admin-update', getUserSnapshot(user));
     }
+
+    socket.on('register-push-token', (data, callback) => {
+        const token = typeof data?.token === 'string' ? data.token.trim() : '';
+        if (isAdminConnection || !userId || token.length < 20 || token.length > 4096 || /\s/.test(token)) {
+            if (typeof callback === 'function') {
+                callback({ ok: false, error: 'Token de notificaciones no válido.' });
+            }
+            return;
+        }
+        if (!firebasePushTokens.has(userId)) {
+            firebasePushTokens.set(userId, new Set());
+        }
+        firebasePushTokens.get(userId).add(token);
+        if (typeof callback === 'function') {
+            callback({ ok: true });
+        }
+    });
+
+    socket.on('unregister-push-token', (data, callback) => {
+        const token = typeof data?.token === 'string' ? data.token.trim() : '';
+        const tokens = firebasePushTokens.get(userId);
+        if (!isAdminConnection && tokens && token) {
+            tokens.delete(token);
+            if (tokens.size === 0) {
+                firebasePushTokens.delete(userId);
+            }
+        }
+        if (typeof callback === 'function') {
+            callback({ ok: true });
+        }
+    });
+
+    socket.on('get-chat-history', (data, callback) => {
+        if (typeof callback !== 'function') {
+            return;
+        }
+        if (isAdminConnection || isAdmin) {
+            const targetId = typeof data?.socketId === 'string' ? data.socketId : '';
+            callback({
+                ok: true,
+                messages: chatHistory.filter((entry) => !targetId || entry.userId === targetId).slice(-MAX_CHAT_HISTORY)
+            });
+            return;
+        }
+        callback({
+            ok: true,
+            messages: chatHistory.filter((entry) => entry.userId === userId).slice(-MAX_CHAT_HISTORY)
+        });
+    });
 
     socket.on('save-geofence', (data, callback) => {
         if (!isAdmin || !data || typeof data.name !== 'string'
@@ -915,8 +1028,16 @@ io.on('connection', (socket) => {
     });
 
     socket.on('send-message', (data, callback) => {
-        const message = typeof data?.message === 'string' ? data.message.trim() : '';
-        const targetId = typeof data?.socketId === 'string' ? data.socketId : '';
+        const message = typeof data?.text === 'string'
+            ? data.text.trim()
+            : typeof data?.message === 'string'
+                ? data.message.trim()
+                : '';
+        const targetId = typeof data?.to === 'string'
+            ? data.to
+            : typeof data?.socketId === 'string'
+                ? data.socketId
+                : '';
         if (!message || message.length > 2000) {
             if (typeof callback === 'function') {
                 callback({ ok: false, error: 'El mensaje debe tener entre 1 y 2000 caracteres.' });
@@ -924,18 +1045,29 @@ io.on('connection', (socket) => {
             return;
         }
 
+        const timestamp = new Date().toISOString();
+        let conversationUserId;
+        let sender;
         if (isAdmin || isAdminConnection) {
             const targetUser = users.get(targetId);
-            if (!targetUser || targetUser.connectedSockets.size === 0) {
+            if (!targetUser) {
                 if (typeof callback === 'function') {
-                    callback({ ok: false, error: 'El usuario no está conectado.' });
+                    callback({ ok: false, error: 'No se encontró el usuario indicado.' });
                 }
                 return;
             }
             io.to(`user:${targetId}`).emit('receive-message', {
+                socketId: targetId,
                 message,
+                text: message,
                 from: 'admin',
-                timestamp: new Date().toISOString()
+                timestamp
+            });
+            conversationUserId = targetId;
+            sender = 'admin';
+            void sendFirebasePushNotification(targetId, {
+                title: 'Nuevo mensaje',
+                body: message.slice(0, 160)
             });
         } else {
             const user = users.get(userId);
@@ -948,12 +1080,27 @@ io.on('connection', (socket) => {
             notifyAdmins('receive-message', {
                 socketId: userId,
                 message,
+                text: message,
                 from: 'user',
-                timestamp: new Date().toISOString()
+                timestamp
             });
+            conversationUserId = userId;
+            sender = 'user';
+        }
+        const entry = {
+            userId: conversationUserId,
+            from: sender,
+            to: sender === 'admin' ? conversationUserId : 'admin',
+            text: message,
+            message,
+            timestamp
+        };
+        chatHistory.push(entry);
+        if (chatHistory.length > MAX_CHAT_HISTORY) {
+            chatHistory.shift();
         }
         if (typeof callback === 'function') {
-            callback({ ok: true });
+            callback({ ok: true, message: entry });
         }
     });
 

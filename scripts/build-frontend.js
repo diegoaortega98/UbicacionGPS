@@ -27,6 +27,13 @@ async function buildFrontend() {
             format: 'iife',
             target: 'es2020',
             outfile: path.join(projectRoot, 'public', 'device-info.bundle.js')
+        }),
+        esbuild.build({
+            entryPoints: [path.join(__dirname, 'push-notifications.js')],
+            bundle: true,
+            format: 'iife',
+            target: 'es2020',
+            outfile: path.join(projectRoot, 'public', 'push-notifications.bundle.js')
         })
     ]);
 
@@ -37,6 +44,6 @@ async function buildFrontend() {
 }
 
 buildFrontend().catch((error) => {
-    console.error('No se pudo compilar el plugin de ubicación:', error);
+    console.error('No se pudieron compilar los bundles de Capacitor:', error);
     process.exitCode = 1;
 });

@@ -643,6 +643,28 @@
             box-shadow: 0 12px 40px rgba(32, 43, 60, 0.26);
         }
 
+        .chat-launcher {
+            position: fixed;
+            left: 18px;
+            bottom: 82px;
+            z-index: 2050;
+            display: grid;
+            width: 54px;
+            height: 54px;
+            place-items: center;
+            border: 0;
+            border-radius: 50%;
+            background: var(--cyan);
+            box-shadow: 0 6px 20px rgba(22, 119, 255, 0.32);
+            color: #fff;
+            cursor: pointer;
+            font-size: 25px;
+        }
+
+        .chat-launcher:hover {
+            background: #0864df;
+        }
+
         .chat-widget-header,
         .chat-widget-form {
             display: flex;
@@ -655,6 +677,25 @@
         .chat-widget-header {
             justify-content: space-between;
             border-bottom: 1px solid rgba(32, 43, 60, 0.1);
+        }
+
+        .chat-widget-header-actions {
+            display: flex;
+            flex: 0 0 auto;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .chat-widget-call {
+            min-height: 32px;
+            padding: 6px 9px;
+            border: 0;
+            border-radius: 8px;
+            background: var(--cyan);
+            color: #fff;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
         }
 
         .chat-widget-header h2 {
@@ -1001,10 +1042,14 @@
         <button id="ios-dialog-close" type="button">Entendido</button>
     </dialog>
     <p class="visually-hidden" id="route-status" aria-live="polite"></p>
+    <button class="chat-launcher" id="chat-launcher" type="button" aria-label="Abrir chat con el administrador" aria-controls="chat-widget" aria-expanded="false">💬</button>
     <section class="chat-widget" id="chat-widget" aria-label="Chat con el administrador" hidden>
         <header class="chat-widget-header">
             <h2>Chat con el administrador</h2>
-            <button class="chat-widget-close" id="chat-widget-close" type="button" aria-label="Cerrar chat">×</button>
+            <div class="chat-widget-header-actions">
+                <button class="chat-widget-call" id="chat-widget-call" type="button">Llamar</button>
+                <button class="chat-widget-close" id="chat-widget-close" type="button" aria-label="Cerrar chat">×</button>
+            </div>
         </header>
         <div class="chat-widget-messages" id="chat-widget-messages" role="log" aria-live="polite"></div>
         <form class="chat-widget-form" id="chat-widget-form">
@@ -1031,6 +1076,7 @@
     <script src="/speech-synthesis.bundle.js"></script>
     <script src="/background-location.bundle.js"></script>
     <script src="/device-info.bundle.js"></script>
+    <script src="/push-notifications.bundle.js"></script>
     <script>
         // Mantiene la caché offline y las notificaciones push de la aplicación web.
         if ('serviceWorker' in navigator) {
@@ -1092,9 +1138,12 @@
         const destinationSuggestions = document.getElementById('destination-suggestions');
         const offlineBanner = document.getElementById('offline-banner');
         const chatWidget = document.getElementById('chat-widget');
+        const chatLauncher = document.getElementById('chat-launcher');
         const chatWidgetMessages = document.getElementById('chat-widget-messages');
         const chatWidgetInput = document.getElementById('chat-widget-input');
         const incomingCall = document.getElementById('incoming-call');
+        const nativePushNotifications = window.CapacitorPushNotifications;
+        let pendingPushToken = null;
         let ownMarker = null;
         let ownLocationCentered = false;
         let pendingLocation = null;
@@ -1111,6 +1160,59 @@
         let batteryInfo = { battery: null, isCharging: null };
         let batteryInfoUpdatedAt = 0;
         let batteryInfoRequest = null;
+
+        function syncPushToken() {
+            if (!pendingPushToken || !socket.connected) {
+                return;
+            }
+            socket.emit('register-push-token', { token: pendingPushToken }, (result) => {
+                if (!result?.ok) {
+                    console.error('No se pudo registrar el token de notificaciones:', result?.error);
+                }
+            });
+        }
+
+        async function initializeNativePushNotifications() {
+            if (!nativePushNotifications?.isNativePlatform) {
+                return;
+            }
+            try {
+                await nativePushNotifications.addListener('registration', ({ value }) => {
+                    pendingPushToken = value;
+                    syncPushToken();
+                });
+                await nativePushNotifications.addListener('registrationError', (error) => {
+                    console.error('Falló el registro de notificaciones push:', error);
+                    statusMessage.textContent = 'No se pudo registrar este dispositivo para notificaciones.';
+                });
+                await nativePushNotifications.addListener('pushNotificationReceived', (notification) => {
+                    if (notification?.body) {
+                        statusMessage.textContent = notification.body;
+                    }
+                });
+
+                const permission = await nativePushNotifications.requestPermissions();
+                if (permission.receive !== 'granted') {
+                    statusMessage.textContent = 'Permite las notificaciones para recibir mensajes y avisos de geocerca.';
+                    return;
+                }
+                if (nativePushNotifications.platform === 'android') {
+                    await nativePushNotifications.createChannel({
+                        id: 'default',
+                        name: 'GPS Familia',
+                        description: 'Mensajes y avisos de zonas',
+                        importance: 4,
+                        visibility: 1
+                    });
+                }
+                await nativePushNotifications.register();
+            } catch (error) {
+                console.error('No se pudo iniciar el registro de notificaciones push:', error);
+                statusMessage.textContent = 'No se pudieron activar las notificaciones push.';
+            }
+        }
+
+        void initializeNativePushNotifications();
 
         async function refreshBatteryInfo() {
             if (Date.now() - batteryInfoUpdatedAt < 60000) {
@@ -1194,6 +1296,16 @@
 
         socket.on('connect', () => {
             socket.emit('set-transport', currentTransportMode);
+            syncPushToken();
+            socket.emit('get-chat-history', {}, (result) => {
+                if (!result?.ok || !Array.isArray(result.messages)) {
+                    return;
+                }
+                chatWidgetMessages.replaceChildren();
+                result.messages.forEach((entry) => {
+                    appendUserChatMessage(entry.text || entry.message, entry.from, entry.timestamp);
+                });
+            });
             if (pendingLocation && !permissionDenied) {
                 refreshBatteryInfo().then((info) => {
                     pendingLocation = { ...pendingLocation, ...info };
@@ -1285,6 +1397,7 @@
             if (!backendUrl) {
                 statusMessage.textContent = 'Configura la URL HTTPS del servidor en public/native-config.js para activar el rastreo.';
             } else {
+                socket.connect();
                 startNativeLocationTracking();
             }
         }
@@ -2129,8 +2242,24 @@
             chatWidgetMessages.scrollTop = chatWidgetMessages.scrollHeight;
         }
 
+        chatLauncher.addEventListener('click', () => {
+            chatWidget.hidden = false;
+            chatLauncher.setAttribute('aria-expanded', 'true');
+            chatWidgetInput.focus();
+        });
+
         document.getElementById('chat-widget-close').addEventListener('click', () => {
             chatWidget.hidden = true;
+            chatLauncher.setAttribute('aria-expanded', 'false');
+        });
+
+        document.getElementById('chat-widget-call').addEventListener('click', () => {
+            const adminPhone = window.GPS_ADMIN_PHONE;
+            if (typeof adminPhone === 'string' && /^[+0-9().\-\s]{7,25}$/.test(adminPhone)) {
+                window.open(`tel:${adminPhone.replace(/[^\d+]/g, '')}`, '_self');
+                return;
+            }
+            statusMessage.textContent = 'La llamada no está disponible: el administrador no tiene un número registrado.';
         });
 
         document.getElementById('chat-widget-form').addEventListener('submit', (event) => {
@@ -2143,7 +2272,7 @@
                 statusMessage.textContent = 'No se puede enviar el mensaje: no hay conexión con el servidor.';
                 return;
             }
-            socket.emit('send-message', { message }, (result) => {
+            socket.emit('send-message', { to: 'admin', text: message }, (result) => {
                 if (!result?.ok) {
                     statusMessage.textContent = result?.error || 'No se pudo enviar el mensaje.';
                     return;
@@ -2154,11 +2283,13 @@
         });
 
         socket.on('receive-message', (data) => {
-            if (!data || typeof data.message !== 'string') {
+            const message = data?.text || data?.message;
+            if (typeof message !== 'string') {
                 return;
             }
             chatWidget.hidden = false;
-            appendUserChatMessage(data.message, 'admin', data.timestamp);
+            chatLauncher.setAttribute('aria-expanded', 'true');
+            appendUserChatMessage(message, 'admin', data.timestamp);
         });
 
         socket.on('geofence-notification', async (notification) => {

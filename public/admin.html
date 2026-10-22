@@ -168,9 +168,9 @@
             inset: 84px 18px 18px;
             z-index: 1000;
             display: grid;
-            grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+            grid-template-columns: 300px minmax(0, 1fr);
             grid-template-rows: 100%;
-            gap: 18px;
+            gap: 14px;
             pointer-events: none;
         }
 
@@ -193,9 +193,11 @@
 
         .admin-panel {
             display: flex;
+            width: 300px;
+            min-width: 0;
             min-height: 0;
             flex-direction: column;
-            padding: 16px;
+            padding: 12px;
             border: 1px solid var(--line);
             border-radius: 14px;
             background: rgba(28, 37, 65, 0.96);
@@ -264,8 +266,8 @@
 
         .device-search {
             position: relative;
-            flex-wrap: wrap;
-            gap: 6px;
+            display: block;
+            width: 100%;
             margin-bottom: 10px;
         }
 
@@ -280,7 +282,7 @@
         }
 
         .search-input {
-            display: flex;
+            display: block;
             width: 100%;
             min-width: 0;
             padding: 12px 12px 12px 39px;
@@ -293,10 +295,13 @@
 
         .push-button {
             width: 100%;
+            min-width: 0;
             margin-bottom: 10px;
             padding: 10px 12px;
             background: #27355a;
             color: var(--cyan);
+            line-height: 1.35;
+            white-space: normal;
         }
 
         .push-button:hover {
@@ -433,11 +438,15 @@
         }
 
         .sound-button {
+            width: 100%;
+            min-width: 0;
             margin-bottom: 10px;
             padding: 9px 12px;
             border: 1px solid rgba(0, 229, 255, 0.25);
             background: rgba(0, 229, 255, 0.08);
             color: var(--cyan);
+            line-height: 1.35;
+            white-space: normal;
         }
 
         .sound-button:hover:not(:disabled) {
@@ -674,6 +683,13 @@
             border-bottom: 1px solid var(--line);
         }
 
+        .chat-header-actions {
+            display: flex;
+            flex: 0 0 auto;
+            align-items: center;
+            gap: 6px;
+        }
+
         .chat-header h2 {
             min-width: 0;
             margin: 0;
@@ -686,6 +702,15 @@
             width: 32px;
             min-height: 32px !important;
             padding: 4px !important;
+        }
+
+        .chat-call {
+            min-height: 32px;
+            padding: 6px 9px;
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            background: rgba(0, 229, 255, 0.1);
+            color: var(--cyan);
+            font-size: 11px;
         }
 
         .chat-messages {
@@ -882,22 +907,58 @@
             display: flex;
             flex: 0 0 auto;
             flex-direction: column;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .panel-actions {
+            display: grid;
+            width: 100%;
+            min-width: 0;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .panel-actions button {
+            min-width: 0;
+            min-height: 38px;
+            padding: 7px 6px;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+            white-space: normal;
+        }
+
+        .panel-actions .show-all {
+            grid-column: 1 / -1;
         }
 
         .geofence-form {
-            display: flex;
-            gap: 7px;
+            display: grid;
+            width: 100%;
+            min-width: 0;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: stretch;
+            gap: 6px;
             margin-bottom: 7px;
         }
 
         .geofence-form .search-input {
+            width: 100%;
+            min-width: 0;
             padding: 9px 10px;
             font-size: 12px;
         }
 
         .geofence-form .search-button {
+            min-width: 58px;
             padding: 8px 10px;
             font-size: 11px;
+        }
+
+        .connection-status {
+            width: 100%;
+            overflow-wrap: anywhere;
         }
 
         .map-column {
@@ -955,11 +1016,18 @@
             }
 
             .admin-panel {
-                width: min(100%, 600px);
+                width: min(100%, 380px);
                 max-height: 46vh;
                 min-height: 230px;
                 align-self: center;
+                overflow-y: auto;
                 padding: 12px;
+            }
+
+            .user-list {
+                min-height: 100px;
+                max-height: 24vh;
+                flex: 0 0 auto;
             }
 
             .map-column {
@@ -1165,7 +1233,10 @@
     <section class="chat-panel" id="chat-panel" aria-label="Chat con usuario" hidden>
         <header class="chat-header">
             <h2 id="chat-title">Mensajes</h2>
-            <button class="chat-close" id="chat-close" type="button" aria-label="Cerrar chat">×</button>
+            <div class="chat-header-actions">
+                <button class="chat-call" id="chat-call" type="button">Llamar</button>
+                <button class="chat-close" id="chat-close" type="button" aria-label="Cerrar chat">×</button>
+            </div>
         </header>
         <div class="chat-messages" id="chat-messages" role="log" aria-live="polite"></div>
         <form class="chat-form" id="chat-form">
@@ -2129,6 +2200,21 @@
             });
             chatPanel.hidden = false;
             chatInput.focus();
+            if (socket.connected) {
+                socket.emit('get-chat-history', { socketId: user.socketId }, (result) => {
+                    if (!result?.ok || !Array.isArray(result.messages) || activeChatUserId !== user.socketId) {
+                        return;
+                    }
+                    const history = result.messages.map((entry) => ({
+                        message: entry.text || entry.message,
+                        from: entry.from,
+                        timestamp: entry.timestamp
+                    }));
+                    chatHistories.set(user.socketId, history);
+                    chatMessages.replaceChildren();
+                    history.forEach((entry) => renderChatMessage(entry.message, entry.from, entry.timestamp));
+                });
+            }
         }
 
         document.getElementById('chat-close').addEventListener('click', () => {
@@ -2173,7 +2259,7 @@
                 return;
             }
             const targetId = activeChatUserId;
-            socket.emit('send-message', { socketId: targetId, message }, (result) => {
+            socket.emit('send-message', { to: targetId, text: message }, (result) => {
                 if (!result?.ok) {
                     status.textContent = result?.error || 'No se pudo enviar el mensaje.';
                     return;
@@ -2181,6 +2267,16 @@
                 addChatMessage(targetId, message, 'admin', new Date().toISOString());
                 chatInput.value = '';
             });
+        });
+
+        document.getElementById('chat-call').addEventListener('click', () => {
+            const user = activeChatUserId ? users.get(activeChatUserId) : null;
+            const phone = user?.phone;
+            if (typeof phone === 'string' && /^[+0-9().\-\s]{7,25}$/.test(phone)) {
+                window.open(`tel:${phone.replace(/[^\d+]/g, '')}`, '_self');
+                return;
+            }
+            status.textContent = 'La llamada no está disponible: el usuario no tiene un número registrado.';
         });
 
         function callUser(user) {
@@ -2312,6 +2408,20 @@
                 (initialData.offlineUsers || []).map((user) => [user.socketId, user])
             );
             (initialData.users || []).forEach((user) => updateUser(offlineSnapshots.get(user.socketId) || user));
+            chatHistories.clear();
+            (initialData.chatHistory || []).forEach((entry) => {
+                const message = entry.text || entry.message;
+                if (typeof entry.userId !== 'string' || typeof message !== 'string') {
+                    return;
+                }
+                const history = chatHistories.get(entry.userId) || [];
+                history.push({
+                    message,
+                    from: entry.from,
+                    timestamp: entry.timestamp
+                });
+                chatHistories.set(entry.userId, history);
+            });
             (initialData.geofences || []).forEach(addGeofence);
             eventLog.splice(0, eventLog.length, ...(initialData.eventLog || []).slice(-50));
             renderEventLog();
@@ -2342,16 +2452,17 @@
         });
 
         socket.on('receive-message', (data) => {
-            if (!data || typeof data.socketId !== 'string' || typeof data.message !== 'string') {
+            const message = data?.text || data?.message;
+            if (typeof data?.socketId !== 'string' || typeof message !== 'string') {
                 return;
             }
             const sender = users.get(data.socketId);
             const senderName = sender ? userDisplayName(sender) : data.socketId.slice(0, 8);
             if (activeChatUserId === data.socketId) {
-                addChatMessage(data.socketId, data.message, 'user', data.timestamp);
+                addChatMessage(data.socketId, message, 'user', data.timestamp);
             } else {
-                addChatMessage(data.socketId, data.message, 'user', data.timestamp);
-                addNotification(`Mensaje de ${senderName}: ${data.message}`);
+                addChatMessage(data.socketId, message, 'user', data.timestamp);
+                addNotification(`Mensaje de ${senderName}: ${message}`);
             }
         });
 
