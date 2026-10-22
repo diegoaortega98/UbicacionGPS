@@ -93,6 +93,14 @@
             display: none !important;
         }
 
+        body.navigation-mode {
+            height: 100dvh;
+        }
+
+        body.navigation-mode #map {
+            height: 100dvh;
+        }
+
         .navigation-exit-button {
             position: fixed;
             top: 16px;
@@ -386,7 +394,8 @@
             right: 18px;
             bottom: 112px;
             z-index: 2000;
-            display: grid !important;
+            display: flex !important;
+            flex-direction: column;
             gap: 10px;
             pointer-events: auto;
         }
@@ -419,6 +428,7 @@
 
         .directions-panel {
             position: fixed;
+            display: none;
             bottom: 18px;
             left: 50%;
             z-index: 1000;
@@ -432,6 +442,10 @@
             background: rgba(255, 255, 255, 0.97);
             box-shadow: 0 8px 26px rgba(32, 43, 60, 0.18);
             backdrop-filter: blur(12px);
+        }
+
+        .directions-panel.has-route {
+            display: block;
         }
 
         .directions-panel h2 {
@@ -688,6 +702,85 @@
                 margin-top: 320px !important;
             }
         }
+
+        @media (max-width: 600px) {
+            .route-panel {
+                top: 64px;
+                width: calc(100vw - 16px);
+                padding: 10px;
+            }
+
+            .route-panel input,
+            .route-panel select,
+            .route-panel button {
+                min-height: 50px;
+                font-size: 16px;
+            }
+
+            .route-panel .suggestion-option {
+                min-height: 44px;
+            }
+
+            body.keyboard-open .route-panel {
+                top: max(8px, env(safe-area-inset-top));
+                max-height: var(--keyboard-panel-max-height, 55vh);
+                overflow-y: auto;
+                overscroll-behavior: contain;
+            }
+
+            .map-view-controls {
+                top: var(--mobile-controls-top, 340px);
+                right: max(12px, env(safe-area-inset-right));
+                bottom: auto;
+                gap: 8px;
+            }
+
+            body.mobile-controls-bottom .map-view-controls,
+            body.navigation-mode .map-view-controls {
+                top: auto;
+                bottom: calc(98px + env(safe-area-inset-bottom));
+            }
+
+            .map-view-button {
+                width: 46px;
+                height: 46px;
+            }
+
+            .download-panel {
+                bottom: calc(12px + env(safe-area-inset-bottom));
+                left: max(12px, env(safe-area-inset-left));
+                gap: 8px;
+                max-width: calc(100vw - 108px);
+            }
+
+            .download-button,
+            .last-route-button {
+                width: 48px;
+                height: 48px;
+                min-height: 48px;
+            }
+
+            .sos-button {
+                right: max(12px, env(safe-area-inset-right));
+                bottom: calc(12px + env(safe-area-inset-bottom));
+                width: 72px;
+                height: 72px;
+            }
+
+            body.navigation-mode .navigation-exit-button {
+                top: max(12px, env(safe-area-inset-top));
+                right: max(12px, env(safe-area-inset-right));
+            }
+
+            body.navigation-mode .admin-lock {
+                top: calc(64px + env(safe-area-inset-top));
+                right: max(12px, env(safe-area-inset-right));
+            }
+
+            body.navigation-mode .leaflet-control-zoom {
+                margin-top: calc(8px + env(safe-area-inset-top)) !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -809,6 +902,7 @@
         const transportMode = document.getElementById('transport-mode');
         const routeSummary = document.getElementById('route-summary');
         const routeStatus = document.getElementById('route-status');
+        const routePanel = document.querySelector('.route-panel');
         const routeSubmit = document.getElementById('route-submit');
         const lastRouteButton = document.getElementById('show-last-route');
         const directionsPanel = document.getElementById('directions-panel');
@@ -818,6 +912,8 @@
         const centerCurrentLocationButton = document.getElementById('center-current-location');
         const zoomNearLocationButton = document.getElementById('zoom-near-location');
         const navigationExitButton = document.getElementById('navigation-exit-button');
+        const mapViewControls = document.querySelector('.map-view-controls');
+        const sosButton = document.getElementById('sos-button');
         const cityInput = document.getElementById('route-city');
         const destinationInput = document.getElementById('route-destination');
         const useCurrentLocationButton = document.getElementById('use-current-location');
@@ -1075,7 +1171,11 @@
 
         function enterNavigationMode() {
             document.body.classList.add('navigation-mode');
+            document.body.classList.remove('mobile-controls-bottom');
+            document.body.classList.remove('keyboard-open');
             navigationExitButton.hidden = false;
+            mapViewControls.style.removeProperty('--mobile-controls-top');
+            routePanel.style.removeProperty('--keyboard-panel-max-height');
             window.requestAnimationFrame(() => {
                 map.invalidateSize();
                 fitFullRoute();
@@ -1088,10 +1188,69 @@
             window.requestAnimationFrame(() => {
                 map.invalidateSize();
                 fitFullRoute();
+                updateMobileMapControlsPosition();
             });
         }
 
         navigationExitButton.addEventListener('click', exitNavigationMode);
+
+        // Mantiene los controles móviles debajo del buscador sin invadir el botón SOS.
+        function updateMobileMapControlsPosition() {
+            if (!window.matchMedia('(max-width: 600px)').matches
+                || document.body.classList.contains('navigation-mode')) {
+                return;
+            }
+
+            const panelBottom = routePanel.getBoundingClientRect().bottom;
+            const controlsHeight = mapViewControls.getBoundingClientRect().height;
+            const maxTop = window.innerHeight - sosButton.offsetHeight - 42 - controlsHeight;
+            if (panelBottom + 10 <= maxTop) {
+                document.body.classList.remove('mobile-controls-bottom');
+                mapViewControls.style.setProperty('--mobile-controls-top', `${Math.ceil(panelBottom + 10)}px`);
+            } else {
+                document.body.classList.add('mobile-controls-bottom');
+                mapViewControls.style.removeProperty('--mobile-controls-top');
+            }
+        }
+
+        window.addEventListener('resize', updateMobileMapControlsPosition);
+        if ('ResizeObserver' in window) {
+            new ResizeObserver(updateMobileMapControlsPosition).observe(routePanel);
+        }
+        updateMobileMapControlsPosition();
+
+        // Al abrir el teclado, limita el buscador al espacio visible y desplaza el input enfocado.
+        function keepRouteInputVisible(input) {
+            document.body.classList.add('keyboard-open');
+            const visibleHeight = window.visualViewport?.height || window.innerHeight;
+            routePanel.style.setProperty('--keyboard-panel-max-height', `${Math.floor(visibleHeight * 0.56)}px`);
+            window.setTimeout(() => {
+                input.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                map.invalidateSize();
+            }, 100);
+        }
+
+        [cityInput, destinationInput].forEach((input) => {
+            input.addEventListener('focus', () => keepRouteInputVisible(input));
+            input.addEventListener('blur', () => {
+                window.setTimeout(() => {
+                    if (!routePanel.contains(document.activeElement)
+                        || ![cityInput, destinationInput].includes(document.activeElement)) {
+                        document.body.classList.remove('keyboard-open');
+                        routePanel.style.removeProperty('--keyboard-panel-max-height');
+                        updateMobileMapControlsPosition();
+                    }
+                }, 150);
+            });
+        });
+
+        window.visualViewport?.addEventListener('resize', () => {
+            if (document.body.classList.contains('keyboard-open')) {
+                const visibleHeight = window.visualViewport.height;
+                routePanel.style.setProperty('--keyboard-panel-max-height', `${Math.floor(visibleHeight * 0.56)}px`);
+                map.invalidateSize();
+            }
+        });
 
         function centerOnCurrentLocation(zoom) {
             if (!ownMarker) {
@@ -1182,6 +1341,7 @@
         function renderRouteInstructions(instructions, summaryText = '') {
             directionsList.replaceChildren();
             directionsSummary.textContent = summaryText;
+            directionsPanel.classList.add('has-route');
             const validInstructions = Array.isArray(instructions)
                 ? instructions.filter((instruction) => instruction && typeof instruction.text === 'string')
                 : [];
@@ -1583,6 +1743,9 @@
             routeSummary.textContent = 'Buscando destino y calculando la ruta...';
             routeStatus.textContent = 'Buscando la ruta solicitada.';
             directionsPanel.hidden = true;
+            directionsPanel.classList.remove('has-route');
+            cityInput.blur();
+            destinationInput.blur();
             try {
                 // El origen se toma siempre del último punto GPS propio, nunca de la ciudad buscada.
                 const origin = ownMarker.getLatLng();
