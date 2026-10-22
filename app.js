@@ -208,13 +208,15 @@ app.get('/api/geocode/autocomplete', async (req, res) => {
     }
 
     const geocodeUrl = new URL('https://api.geoapify.com/v1/geocode/autocomplete');
-    geocodeUrl.search = new URLSearchParams({
-        text: query,
-        apiKey,
-        limit: '5',
-        ...(type ? { type } : {}),
-        ...(hasLatitude && hasLongitude ? { bias: `proximity:${longitude},${latitude}` } : {})
-    });
+    geocodeUrl.searchParams.set('text', query);
+    geocodeUrl.searchParams.set('apiKey', apiKey);
+    geocodeUrl.searchParams.set('limit', '5');
+    if (type) {
+        geocodeUrl.searchParams.set('type', type);
+    }
+    if (hasLatitude && hasLongitude) {
+        geocodeUrl.searchParams.set('bias', `proximity:${longitude},${latitude}`);
+    }
 
     try {
         const response = await fetch(geocodeUrl, {

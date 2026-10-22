@@ -859,6 +859,7 @@
     <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
     <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <script src="/speech-synthesis.bundle.js"></script>
     <script src="/background-location.bundle.js"></script>
     <script>
         // Mantiene la caché offline y las notificaciones push de la aplicación web.
@@ -933,7 +934,6 @@
         let isOnline = navigator.onLine;
         let isCalculatingRoute = false;
         let isRequestingCurrentLocation = false;
-        let destinationLocationRequest = null;
         function shareLocation(position) {
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
@@ -1089,32 +1089,6 @@
             }
             const { lat, lng } = ownMarker.getLatLng();
             return { latitude: lat, longitude: lng };
-        }
-
-        function requestDestinationSearchLocation() {
-            if (!navigator.geolocation) {
-                return Promise.resolve(null);
-            }
-            if (!destinationLocationRequest) {
-                destinationLocationRequest = new Promise((resolve) => {
-                    navigator.geolocation.getCurrentPosition((position) => {
-                        resolve({
-                            latitude: position.coords.latitude,
-                            longitude: position.coords.longitude
-                        });
-                    }, (error) => {
-                        console.warn('No se pudo obtener GPS para priorizar destinos:', error.message);
-                        resolve(null);
-                    }, {
-                        enableHighAccuracy: false,
-                        maximumAge: 60000,
-                        timeout: 4000
-                    });
-                }).finally(() => {
-                    destinationLocationRequest = null;
-                });
-            }
-            return destinationLocationRequest;
         }
 
         transportMode.addEventListener('change', () => {
@@ -1372,23 +1346,40 @@
             directionsPanel.hidden = false;
         }
 
-        function speakFirstInstruction(instructions) {
+        async function speakFirstInstruction(instructions) {
             const firstInstruction = Array.isArray(instructions)
                 ? instructions.find((instruction) => instruction && typeof instruction.text === 'string')
                 : null;
             if (!firstInstruction) {
                 return;
             }
-            if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
-                console.warn('Este navegador no ofrece síntesis de voz para las indicaciones.');
-                return;
-            }
-
             const distance = Number(firstInstruction.distance);
             const distanceText = Number.isFinite(distance) && distance > 0
                 ? ` en ${formatRouteDistance(distance)}`
                 : '';
-            const utterance = new SpeechSynthesisUtterance(`${firstInstruction.text}${distanceText}`);
+            const instructionText = `${firstInstruction.text}${distanceText}`;
+            if (isNativeApp) {
+                try {
+                    if (!window.CapacitorSpeechSynthesis) {
+                        throw new Error('El plugin nativo de voz no está disponible.');
+                    }
+                    await window.CapacitorSpeechSynthesis.speak({
+                        text: instructionText,
+                        language: 'es-ES',
+                        rate: 0.9,
+                        queueStrategy: 'Flush'
+                    });
+                } catch (error) {
+                    console.error('No se pudo reproducir la indicación con el plugin nativo:', error);
+                }
+                return;
+            }
+
+            if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+                console.warn('Este navegador no ofrece síntesis de voz para las indicaciones.');
+                return;
+            }
+            const utterance = new SpeechSynthesisUtterance(instructionText);
             utterance.lang = 'es-CO';
             utterance.addEventListener('error', (error) => {
                 console.error('No se pudo reproducir la primera indicación:', error);
@@ -1463,18 +1454,13 @@
         async function searchGeoapify(query, isCitySearch, signal) {
             const searchUrl = new URL('/api/geocode/autocomplete', backendUrl || window.location.origin);
             searchUrl.searchParams.set('text', query);
-            let location = null;
+            const location = getOwnLocationCoordinates();
             if (isCitySearch) {
                 searchUrl.searchParams.set('type', 'city');
-            } else {
-                location = getOwnLocationCoordinates() || await requestDestinationSearchLocation();
-                if (signal.aborted) {
-                    return [];
-                }
-                if (location) {
-                    searchUrl.searchParams.set('latitude', String(location.latitude));
-                    searchUrl.searchParams.set('longitude', String(location.longitude));
-                }
+            }
+            if (location) {
+                searchUrl.searchParams.set('latitude', String(location.latitude));
+                searchUrl.searchParams.set('longitude', String(location.longitude));
             }
             const response = await fetch(searchUrl, { signal });
             if (!response.ok) {

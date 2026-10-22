@@ -4,3 +4,6 @@ project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/
 
 include ':bglocation-capacitor'
 project(':bglocation-capacitor').projectDir = new File('../node_modules/@bglocation/capacitor/android')
+
+include ':capgo-capacitor-speech-synthesis'
+project(':capgo-capacitor-speech-synthesis').projectDir = new File('../node_modules/@capgo/capacitor-speech-synthesis/android')
