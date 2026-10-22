@@ -3,7 +3,7 @@ services:
     name: ubicaciongps
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npm run build:frontend
     startCommand: node app.js
     healthCheckPath: /health
     envVars:

@@ -1,4 +1,4 @@
-package com.ubicaciongps.app;
+package com.gpsfamilia.app;
 
 import com.getcapacitor.BridgeActivity;
 

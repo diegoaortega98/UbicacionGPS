@@ -627,11 +627,159 @@
             line-height: 1;
         }
 
+        .chat-widget {
+            position: fixed;
+            right: 18px;
+            bottom: 18px;
+            z-index: 2100;
+            display: flex;
+            width: min(340px, calc(100vw - 24px));
+            height: min(380px, calc(100dvh - 36px));
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid rgba(22, 119, 255, 0.25);
+            border-radius: 16px;
+            background: #fff;
+            box-shadow: 0 12px 40px rgba(32, 43, 60, 0.26);
+        }
+
+        .chat-widget-header,
+        .chat-widget-form {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 11px;
+            background: #f6f8fc;
+        }
+
+        .chat-widget-header {
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(32, 43, 60, 0.1);
+        }
+
+        .chat-widget-header h2 {
+            margin: 0;
+            font-size: 15px;
+        }
+
+        .chat-widget-close {
+            width: 32px;
+            min-height: 32px;
+            border: 0;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 22px;
+        }
+
+        .chat-widget-messages {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .chat-widget-message {
+            max-width: 86%;
+            padding: 9px 11px;
+            border-radius: 12px;
+            background: #eef2f8;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+        }
+
+        .chat-widget-message.admin {
+            align-self: flex-end;
+            background: #e4f0ff;
+        }
+
+        .chat-widget-message time {
+            display: block;
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .chat-widget-form {
+            border-top: 1px solid rgba(32, 43, 60, 0.1);
+        }
+
+        .chat-widget-form input {
+            min-width: 0;
+            min-height: 40px;
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid rgba(32, 43, 60, 0.16);
+            border-radius: 9px;
+            color: var(--text);
+        }
+
+        .chat-widget-form button,
+        .incoming-call button {
+            min-height: 40px;
+            padding: 8px 12px;
+            border: 0;
+            border-radius: 9px;
+            background: var(--cyan);
+            color: #fff;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .incoming-call {
+            position: fixed;
+            inset: 0;
+            z-index: 2200;
+            display: grid;
+            place-items: center;
+            padding: 18px;
+            background: rgba(3, 8, 22, 0.62);
+        }
+
+        .incoming-call-card {
+            width: min(360px, 100%);
+            padding: 22px;
+            border-radius: 16px;
+            background: #fff;
+            box-shadow: 0 14px 46px rgba(32, 43, 60, 0.3);
+            text-align: center;
+        }
+
+        .incoming-call-card h2 {
+            margin: 0 0 8px;
+            color: var(--text);
+            font-size: 20px;
+        }
+
+        .incoming-call-card p {
+            margin: 0 0 18px;
+            color: var(--muted);
+        }
+
+        .incoming-call-actions {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .incoming-call .decline-call {
+            background: var(--red);
+        }
+
         @media (max-width: 760px) {
             .route-panel {
                 top: 64px;
                 width: calc(100vw - 24px);
                 padding: 10px;
+            }
+
+            .chat-widget {
+                right: 12px;
+                bottom: 12px;
             }
 
             .route-form {
@@ -853,6 +1001,27 @@
         <button id="ios-dialog-close" type="button">Entendido</button>
     </dialog>
     <p class="visually-hidden" id="route-status" aria-live="polite"></p>
+    <section class="chat-widget" id="chat-widget" aria-label="Chat con el administrador" hidden>
+        <header class="chat-widget-header">
+            <h2>Chat con el administrador</h2>
+            <button class="chat-widget-close" id="chat-widget-close" type="button" aria-label="Cerrar chat">×</button>
+        </header>
+        <div class="chat-widget-messages" id="chat-widget-messages" role="log" aria-live="polite"></div>
+        <form class="chat-widget-form" id="chat-widget-form">
+            <input id="chat-widget-input" type="text" maxlength="2000" placeholder="Escribe un mensaje..." aria-label="Mensaje" required>
+            <button type="submit">Enviar</button>
+        </form>
+    </section>
+    <section class="incoming-call" id="incoming-call" role="dialog" aria-modal="true" aria-labelledby="incoming-call-title" hidden>
+        <div class="incoming-call-card">
+            <h2 id="incoming-call-title">Llamada entrante</h2>
+            <p>El administrador quiere comunicarse contigo.</p>
+            <div class="incoming-call-actions">
+                <button class="decline-call" id="decline-call" type="button">Rechazar</button>
+                <button id="accept-call" type="button">Aceptar</button>
+            </div>
+        </div>
+    </section>
 
     <script src="/native-config.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -861,6 +1030,7 @@
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="/speech-synthesis.bundle.js"></script>
     <script src="/background-location.bundle.js"></script>
+    <script src="/device-info.bundle.js"></script>
     <script>
         // Mantiene la caché offline y las notificaciones push de la aplicación web.
         if ('serviceWorker' in navigator) {
@@ -921,6 +1091,10 @@
         const citySuggestions = document.getElementById('city-suggestions');
         const destinationSuggestions = document.getElementById('destination-suggestions');
         const offlineBanner = document.getElementById('offline-banner');
+        const chatWidget = document.getElementById('chat-widget');
+        const chatWidgetMessages = document.getElementById('chat-widget-messages');
+        const chatWidgetInput = document.getElementById('chat-widget-input');
+        const incomingCall = document.getElementById('incoming-call');
         let ownMarker = null;
         let ownLocationCentered = false;
         let pendingLocation = null;
@@ -934,11 +1108,61 @@
         let isOnline = navigator.onLine;
         let isCalculatingRoute = false;
         let isRequestingCurrentLocation = false;
+        let batteryInfo = { battery: null, isCharging: null };
+        let batteryInfoUpdatedAt = 0;
+        let batteryInfoRequest = null;
+
+        async function refreshBatteryInfo() {
+            if (Date.now() - batteryInfoUpdatedAt < 60000) {
+                return batteryInfo;
+            }
+            if (batteryInfoRequest) {
+                return batteryInfoRequest;
+            }
+            batteryInfoRequest = (async () => {
+                try {
+                    let info;
+                    if (window.CapacitorDevice?.getBatteryInfo) {
+                        info = await window.CapacitorDevice.getBatteryInfo();
+                    } else if (navigator.getBattery) {
+                        const battery = await navigator.getBattery();
+                        info = {
+                            batteryLevel: battery.level,
+                            isCharging: battery.charging
+                        };
+                    } else {
+                        batteryInfoUpdatedAt = Date.now();
+                        return batteryInfo;
+                    }
+                    const rawLevel = Number(info.batteryLevel ?? info.level);
+                    const levelPercent = rawLevel <= 1 ? rawLevel * 100 : rawLevel;
+                    if (Number.isFinite(levelPercent) && levelPercent >= 0 && levelPercent <= 100) {
+                        batteryInfo = {
+                            battery: Math.round(levelPercent),
+                            isCharging: typeof info.isCharging === 'boolean' ? info.isCharging : null
+                        };
+                    }
+                    batteryInfoUpdatedAt = Date.now();
+                    return batteryInfo;
+                } catch (error) {
+                    console.error('No se pudo obtener el estado de la batería:', error);
+                    batteryInfoUpdatedAt = Date.now();
+                    statusMessage.textContent = `No se pudo leer el estado de la batería: ${error.message || error}`;
+                    return batteryInfo;
+                }
+            })();
+            try {
+                return await batteryInfoRequest;
+            } finally {
+                batteryInfoRequest = null;
+            }
+        }
+
         function shareLocation(position) {
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
             const location = [latitude, longitude];
-            pendingLocation = { latitude, longitude, transport: currentTransportMode };
+            pendingLocation = { ...pendingLocation, latitude, longitude, transport: currentTransportMode };
 
             if (ownMarker) {
                 ownMarker.setLatLng(location);
@@ -958,18 +1182,26 @@
                 ownLocationCentered = true;
             }
 
-            if (socket.connected && !isNativeApp) {
-                socket.emit('send-location', pendingLocation);
-            }
+            refreshBatteryInfo().then((info) => {
+                pendingLocation = { ...pendingLocation, ...info };
+                if (socket.connected) {
+                    socket.emit('send-location', pendingLocation);
+                }
+            });
             statusMessage.textContent = 'Conectado';
             updateRouteButtonState();
         }
 
         socket.on('connect', () => {
             socket.emit('set-transport', currentTransportMode);
-            if (pendingLocation && !permissionDenied && !isNativeApp) {
-                socket.emit('send-location', pendingLocation);
-                statusMessage.textContent = 'Conectado';
+            if (pendingLocation && !permissionDenied) {
+                refreshBatteryInfo().then((info) => {
+                    pendingLocation = { ...pendingLocation, ...info };
+                    if (socket.connected) {
+                        socket.emit('send-location', pendingLocation);
+                        statusMessage.textContent = 'Conectado';
+                    }
+                });
             }
         });
 
@@ -1099,7 +1331,7 @@
             }
             if (socket.connected) {
                 socket.emit('set-transport', currentTransportMode);
-                if (pendingLocation && !isNativeApp) {
+                if (pendingLocation) {
                     pendingLocation.transport = currentTransportMode;
                     socket.emit('send-location', pendingLocation);
                 }
@@ -1880,6 +2112,102 @@
                 iosInstallDialog.close();
             }
         });
+
+        function appendUserChatMessage(message, from, timestamp) {
+            const bubble = document.createElement('div');
+            bubble.className = `chat-widget-message${from === 'admin' ? ' admin' : ''}`;
+            const content = document.createElement('span');
+            content.textContent = message;
+            const time = document.createElement('time');
+            time.dateTime = timestamp || new Date().toISOString();
+            time.textContent = new Date(time.dateTime).toLocaleTimeString('es', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            bubble.append(content, time);
+            chatWidgetMessages.appendChild(bubble);
+            chatWidgetMessages.scrollTop = chatWidgetMessages.scrollHeight;
+        }
+
+        document.getElementById('chat-widget-close').addEventListener('click', () => {
+            chatWidget.hidden = true;
+        });
+
+        document.getElementById('chat-widget-form').addEventListener('submit', (event) => {
+            event.preventDefault();
+            const message = chatWidgetInput.value.trim();
+            if (!message) {
+                return;
+            }
+            if (!socket.connected) {
+                statusMessage.textContent = 'No se puede enviar el mensaje: no hay conexión con el servidor.';
+                return;
+            }
+            socket.emit('send-message', { message }, (result) => {
+                if (!result?.ok) {
+                    statusMessage.textContent = result?.error || 'No se pudo enviar el mensaje.';
+                    return;
+                }
+                appendUserChatMessage(message, 'user', new Date().toISOString());
+                chatWidgetInput.value = '';
+            });
+        });
+
+        socket.on('receive-message', (data) => {
+            if (!data || typeof data.message !== 'string') {
+                return;
+            }
+            chatWidget.hidden = false;
+            appendUserChatMessage(data.message, 'admin', data.timestamp);
+        });
+
+        socket.on('geofence-notification', async (notification) => {
+            if (!notification || typeof notification.name !== 'string') {
+                return;
+            }
+            const isArrival = notification.action === 'entró';
+            const title = isArrival ? 'Has llegado a una zona' : 'Has salido de una zona';
+            const body = isArrival
+                ? `Has llegado a ${notification.name}.`
+                : `Has salido de ${notification.name}.`;
+            if (!('serviceWorker' in navigator) || !('Notification' in window)) {
+                statusMessage.textContent = body;
+                return;
+            }
+            if (Notification.permission !== 'granted') {
+                statusMessage.textContent = `${body} Activa las notificaciones del navegador para recibir avisos.`;
+                return;
+            }
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                await registration.showNotification(title, {
+                    body,
+                    icon: '/icon-192x192.png',
+                    badge: '/icon-192x192.png',
+                    tag: `geofence-${notification.id || notification.name}`,
+                    data: { url: '/' }
+                });
+                statusMessage.textContent = body;
+            } catch (error) {
+                console.error('No se pudo mostrar la notificación de geocerca:', error);
+                statusMessage.textContent = `No se pudo mostrar la notificación: ${error.message || error}`;
+            }
+        });
+
+        socket.on('incoming-call', () => {
+            incomingCall.hidden = false;
+        });
+
+        function respondToCall(accepted) {
+            incomingCall.hidden = true;
+            socket.emit('call-response', { accepted });
+            statusMessage.textContent = accepted
+                ? 'Aceptaste la llamada. Esta versión no transmite audio.'
+                : 'Llamada rechazada.';
+        }
+
+        document.getElementById('accept-call').addEventListener('click', () => respondToCall(true));
+        document.getElementById('decline-call').addEventListener('click', () => respondToCall(false));
 
         socket.on('receive-location', (data) => {
             if (isNativeApp && data.id === deviceId) {

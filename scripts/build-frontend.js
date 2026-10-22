@@ -20,6 +20,13 @@ async function buildFrontend() {
             format: 'iife',
             target: 'es2020',
             outfile: path.join(projectRoot, 'public', 'speech-synthesis.bundle.js')
+        }),
+        esbuild.build({
+            entryPoints: [path.join(__dirname, 'device-info.js')],
+            bundle: true,
+            format: 'iife',
+            target: 'es2020',
+            outfile: path.join(projectRoot, 'public', 'device-info.bundle.js')
         })
     ]);
 

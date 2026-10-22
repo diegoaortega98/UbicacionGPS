@@ -1,6 +1,6 @@
 {
-  "appId": "com.ubicaciongps.app",
-  "appName": "UbicacionGPS",
+  "appId": "com.gpsfamilia.app",
+  "appName": "GPS Familia",
   "webDir": "public",
   "android": {
     "useLegacyBridge": true
