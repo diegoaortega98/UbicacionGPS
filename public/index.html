@@ -93,15 +93,10 @@
             display: none !important;
         }
 
-        body.navigation-mode #fit-full-route,
-        body.navigation-mode #zoom-near-location {
-            display: none;
-        }
-
         .navigation-exit-button {
             position: fixed;
             top: 16px;
-            left: 16px;
+            right: 16px;
             z-index: 2001;
             min-height: 44px;
             padding: 0 16px;
@@ -118,6 +113,14 @@
         .navigation-exit-button:hover {
             background: #f1f6ff;
             box-shadow: 0 6px 18px rgba(32, 43, 60, 0.24);
+        }
+
+        body.navigation-mode .admin-lock {
+            top: 70px;
+        }
+
+        body.navigation-mode .leaflet-control-zoom {
+            margin-top: 10px !important;
         }
 
         .sos-button {
