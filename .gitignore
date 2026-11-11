@@ -1,4 +1,7 @@
 node_modules/
+package.json
+package-lock.json
+render.yaml
 .env
 GpsSystem.Api/appsettings.Development.json
 vapid-keys.json
