@@ -46,9 +46,10 @@ builder.Services.AddSignalR();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("GpsClient", policy =>
-        policy.AllowAnyOrigin()
+        policy.WithOrigins("http://localhost:5023", "https://ubicaciongps.onrender.com")
             .AllowAnyHeader()
-            .AllowAnyMethod());
+            .AllowAnyMethod()
+            .AllowCredentials());
 });
 
 var jwtSecret = builder.Configuration["JWT_SECRET"];
@@ -133,6 +134,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseRouting();
 app.UseCors("GpsClient");
 app.UseAuthentication();
 app.UseAuthorization();
@@ -145,8 +147,9 @@ app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();
 app.MapHub<LlamadaHub>("/hubs/llamada").RequireAuthorization();
 app.MapFallbackToFile("index.html");
 
-await using (var scope = app.Services.CreateAsyncScope())
+if (!app.Environment.IsEnvironment("Testing"))
 {
+    await using var scope = app.Services.CreateAsyncScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.MigrateAsync();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
@@ -164,3 +167,5 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.Run();
+
+public partial class Program { }
