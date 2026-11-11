@@ -2,6 +2,12 @@
 
 Aplicación web para compartir ubicaciones en tiempo real, con panel de administración protegido, alertas SOS, geocercas con búsqueda de direcciones e historial de rutas. Los usuarios conectados comparten ubicación en una única sala global; los datos y las sesiones se mantienen en memoria mientras el servidor está activo.
 
+## Backend .NET 8 para GPS Ride
+
+Se añadió `GpsSystem.Api`, un backend independiente con PostgreSQL, Identity/JWT, viajes de pasajero y conductor, chat y señalización WebRTC por SignalR. El backend conserva el rastreo GPS existente y sirve su propia interfaz en `wwwroot`.
+
+Consulta la [guía del backend](./GpsSystem.Api/README.md) para configurar `DATABASE_URL` y `JWT_SECRET`, ejecutar las migraciones, probar los endpoints y lanzar `simulador_gps.py`. La imagen Docker se construye desde la raíz con `docker build -t gps-system .` y escucha en el puerto `10000`. El servicio Node.js existente continúa ejecutándose por separado con `npm start`.
+
 ## Ejecutar en local
 
 1. Instala Node.js 22 o superior (el servidor usa Node.js 18+, pero Capacitor 8 requiere Node.js 22+).

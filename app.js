@@ -405,8 +405,22 @@ function getUserSnapshot(user) {
         lastLat: user.lastLat,
         lastLng: user.lastLng,
         lastUpdate: user.lastUpdate,
-        history: user.history.map((location) => ({ ...location }))
+        history: user.history.map((location) => ({ ...location })),
+        dailyHistory: Object.fromEntries(
+            Object.entries(user.dailyHistory).map(([date, locations]) => [
+                date,
+                locations.map((location) => ({ ...location }))
+            ])
+        )
     };
+}
+
+// Agrupa recorridos según la zona horaria local del servidor.
+function getLocalDateKey(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function distanceInMeters(latitude1, longitude1, latitude2, longitude2) {
@@ -506,6 +520,7 @@ function createTrackedUser(userId) {
         lastLng: null,
         lastUpdate: null,
         history: [],
+        dailyHistory: {},
         heatHistory: [],
         stationarySince: null,
         stationaryTimer: null,
@@ -610,6 +625,16 @@ function updateUserLocation(user, latitude, longitude, sourceSocket, transport, 
     user.lastLng = longitude;
     user.lastUpdate = updatedAt.toISOString();
     user.history.push({
+        lat: user.lastLat,
+        lng: user.lastLng,
+        timestamp: user.lastUpdate
+    });
+    const dateKey = getLocalDateKey(updatedAt);
+    if (!user.dailyHistory[dateKey]) {
+        user.dailyHistory[dateKey] = [];
+    }
+    // El historial diario no altera el historial corto usado por las funciones existentes.
+    user.dailyHistory[dateKey].push({
         lat: user.lastLat,
         lng: user.lastLng,
         timestamp: user.lastUpdate
@@ -1005,6 +1030,13 @@ io.on('connection', (socket) => {
         callback({ ok: true, points });
     });
 
+    socket.on('get-server-date', (callback) => {
+        if (!isAdmin || typeof callback !== 'function') {
+            return;
+        }
+        callback({ ok: true, date: getLocalDateKey() });
+    });
+
     socket.on('clear-user-history', (data, callback) => {
         const targetId = typeof data?.socketId === 'string' ? data.socketId : '';
         const user = isAdmin && targetId ? users.get(targetId) : null;
@@ -1015,12 +1047,28 @@ io.on('connection', (socket) => {
             return;
         }
         user.history = [];
+        user.dailyHistory = {};
         user.heatHistory = [];
+        if (data.clearLocation === true) {
+            user.lastLat = null;
+            user.lastLng = null;
+            user.lastUpdate = null;
+            user.stationarySince = null;
+            user.stationaryAlerted = false;
+            if (user.stationaryTimer) {
+                clearTimeout(user.stationaryTimer);
+                user.stationaryTimer = null;
+            }
+        }
         const snapshot = getUserSnapshot(user);
         if (offlineUsers[targetId]) {
-            offlineUsers[targetId] = { ...offlineUsers[targetId], history: [] };
+            offlineUsers[targetId] = {
+                ...offlineUsers[targetId],
+                ...snapshot,
+                disconnectedAt: user.disconnectedAt || offlineUsers[targetId].disconnectedAt
+            };
         }
-        logEvent('history-cleared', `El admin borró el historial de ubicaciones de ${user.displayName || targetId}.`, targetId);
+        logEvent('history-cleared', `El admin borró el historial de ${user.displayName || targetId}.`, targetId);
         notifyAdmins('admin-update', snapshot);
         if (typeof callback === 'function') {
             callback({ ok: true, user: snapshot });

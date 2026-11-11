@@ -1,0 +1,131 @@
+@GpsSystem.Api_HostAddress = http://localhost:5023
+@token = reemplaza-por-el-token-devuelto
+@viajeId = 00000000-0000-0000-0000-000000000000
+
+### Registrar pasajero
+POST {{GpsSystem.Api_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "pasajero@example.com",
+  "password": "Cambiar-12345",
+  "rol": "Pasajero"
+}
+
+###
+
+### Registrar conductor (usa una placa única)
+POST {{GpsSystem.Api_HostAddress}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "conductor@example.com",
+  "password": "Cambiar-12345",
+  "rol": "Conductor",
+  "vehiculo": "Sedán",
+  "placa": "ABC123"
+}
+
+###
+
+### Iniciar sesión
+POST {{GpsSystem.Api_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "pasajero@example.com",
+  "password": "Cambiar-12345"
+}
+
+###
+
+### Leer configuración web pública de Firebase Messaging
+GET {{GpsSystem.Api_HostAddress}}/api/notificaciones/config
+
+###
+
+### Registrar token FCM (autenticado)
+POST {{GpsSystem.Api_HostAddress}}/api/notificaciones/token
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "token": "token-fcm-del-navegador"
+}
+
+###
+
+### Solicitar viaje (token de pasajero)
+POST {{GpsSystem.Api_HostAddress}}/api/viajes/solicitar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "origenLat": 10.391,
+  "origenLng": -75.4794,
+  "destinoLat": 10.405,
+  "destinoLng": -75.51
+}
+
+###
+
+### Viajes disponibles (token de conductor)
+GET {{GpsSystem.Api_HostAddress}}/api/viajes/disponibles
+Authorization: Bearer {{token}}
+
+###
+
+### Mis viajes
+GET {{GpsSystem.Api_HostAddress}}/api/viajes/mios
+Authorization: Bearer {{token}}
+
+###
+
+### Obtener un viaje propio
+GET {{GpsSystem.Api_HostAddress}}/api/viajes/{{viajeId}}
+Authorization: Bearer {{token}}
+
+###
+
+### Aceptar viaje (token de conductor)
+POST {{GpsSystem.Api_HostAddress}}/api/viajes/{{viajeId}}/aceptar
+Authorization: Bearer {{token}}
+
+###
+
+### Iniciar viaje con PIN (token de conductor)
+POST {{GpsSystem.Api_HostAddress}}/api/viajes/{{viajeId}}/iniciar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "pin": "1234"
+}
+
+###
+
+### Finalizar viaje (token de conductor)
+POST {{GpsSystem.Api_HostAddress}}/api/viajes/{{viajeId}}/finalizar
+Authorization: Bearer {{token}}
+
+###
+
+POST {{GpsSystem.Api_HostAddress}}/api/ubicaciones
+Content-Type: application/json
+
+{
+  "dispositivoId": "vehiculo-demo-01",
+  "latitud": 10.391,
+  "longitud": -75.4794,
+  "velocidad": 35
+}
+
+###
+
+GET {{GpsSystem.Api_HostAddress}}/api/ubicaciones/actual
+Accept: application/json
+
+###
+
+GET {{GpsSystem.Api_HostAddress}}/api/ubicaciones/historial/vehiculo-demo-01
+Accept: application/json

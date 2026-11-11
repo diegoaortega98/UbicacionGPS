@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#123B63">
+    <title>UbicacionGPS</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <main id="map" aria-label="Mapa para solicitar y seguir viajes"></main>
+    <section id="pin-banner" class="pin-banner" role="status" aria-live="assertive" hidden>
+        <button id="close-pin-banner" class="pin-banner-close" type="button" aria-label="Cerrar aviso">×</button>
+        <p>PIN de tu viaje</p>
+        <strong id="trip-pin"></strong>
+        <span>Compártelo con tu conductor al encontrarse.</span>
+    </section>
+    <aside class="panel">
+        <header class="brand">
+            <div class="brand-mark" aria-hidden="true">G</div>
+            <div><h1>UbicacionGPS</h1><p>Movilidad inteligente y segura</p></div>
+        </header>
+
+        <section id="auth-panel" class="card">
+            <div class="tabs">
+                <button id="show-login" class="tab active" type="button">Iniciar sesión</button>
+                <button id="show-register" class="tab" type="button">Crear cuenta</button>
+            </div>
+            <form id="login-form">
+                <label>Correo electrónico<input name="email" type="email" autocomplete="email" required></label>
+                <label>Contraseña<input name="password" type="password" autocomplete="current-password" required></label>
+                <button class="primary" type="submit">Entrar</button>
+            </form>
+            <form id="register-form" hidden>
+                <label>Correo electrónico<input name="email" type="email" autocomplete="email" required></label>
+                <label>Contraseña (mínimo 10 caracteres)<input name="password" type="password" autocomplete="new-password" minlength="10" required></label>
+                <label>Teléfono<input name="telefono" type="tel" autocomplete="tel" maxlength="32" required></label>
+                <label>Quiero registrarme como
+                    <select name="rol" id="register-role">
+                        <option value="Pasajero">Pasajero</option>
+                        <option value="Conductor">Conductor</option>
+                    </select>
+                </label>
+                <div id="driver-fields" hidden>
+                    <label>Vehículo<input name="vehiculo" maxlength="100"></label>
+                    <label>Placa<input name="placa" maxlength="20"></label>
+                </div>
+                <button class="primary" type="submit">Crear cuenta</button>
+            </form>
+            <p id="auth-message" class="message" aria-live="polite"></p>
+        </section>
+
+        <section id="user-panel" class="card" hidden>
+            <div class="user-heading">
+                <div><h2 id="welcome"></h2><p id="connection-status">Conectando...</p></div>
+                <button id="logout" class="secondary compact" type="button">Salir</button>
+            </div>
+            <button id="enable-notifications" class="secondary notification-button" type="button">Activar notificaciones</button>
+
+            <section id="passenger-panel" hidden>
+                <h3>Solicitar un viaje</h3>
+                <p class="hint">Haz clic en el mapa para seleccionar origen y destino, o usa tu ubicación actual como origen.</p>
+                <div class="city-search">
+                    <label for="current-city">Ciudad actual</label>
+                    <div class="city-search-row">
+                        <input id="current-city" type="text" placeholder="Ej. Medellín, Bogotá, Cartagena" autocomplete="address-level2">
+                        <button id="apply-city" class="secondary" type="button">Aplicar</button>
+                    </div>
+                </div>
+                <p id="search-city" class="hint" aria-live="polite">Detectando ciudad...</p>
+                <div class="destination-search">
+                    <label for="origin-search">Origen
+                        <input id="origin-search" type="search" placeholder="Escribe una dirección o lugar" autocomplete="off" aria-autocomplete="list" aria-controls="origin-suggestions" aria-expanded="false">
+                    </label>
+                    <div id="origin-suggestions" class="destination-suggestions" role="listbox" hidden></div>
+                    <input id="origin-lat" type="hidden">
+                    <input id="origin-lng" type="hidden">
+                </div>
+                <div class="destination-search">
+                    <label for="destination-search">Destino
+                        <input id="destination-search" type="search" placeholder="Escribe una dirección o lugar" autocomplete="off" aria-autocomplete="list" aria-controls="destination-suggestions" aria-expanded="false">
+                    </label>
+                    <div id="destination-suggestions" class="destination-suggestions" role="listbox" hidden></div>
+                    <input id="destination-lat" type="hidden">
+                    <input id="destination-lng" type="hidden">
+                </div>
+                <div class="button-row">
+                    <button id="use-location" class="secondary" type="button">📍 Usar mi ubicación actual</button>
+                </div>
+                <button id="request-ride" class="primary" type="button">Solicitar Viaje</button>
+                <div id="passenger-trip" class="trip-summary" hidden></div>
+            </section>
+
+            <section id="driver-panel" hidden>
+                <h3>Solicitudes disponibles</h3>
+                <button id="refresh-rides" class="secondary" type="button">Actualizar solicitudes</button>
+                <div id="available-rides" class="ride-list"></div>
+                <div id="driver-trip" class="trip-summary" hidden>
+                    <h3>Viaje asignado</h3>
+                    <p id="driver-trip-info"></p>
+                    <form id="pin-form">
+                        <label>PIN de cuatro dígitos<input name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required></label>
+                        <button class="primary" type="submit">Validar PIN e iniciar</button>
+                    </form>
+                    <button id="finish-ride" class="primary" type="button" hidden>Finalizar viaje</button>
+                </div>
+            </section>
+
+            <p id="app-message" class="message" aria-live="polite"></p>
+        </section>
+    </aside>
+
+    <button id="contact-widget-toggle" class="contact-widget-toggle" type="button" hidden>Chat y llamada</button>
+    <section id="contact-widget" class="floating-contact-widget" aria-hidden="true" hidden>
+        <header class="contact-widget-header">
+            <div>
+                <strong id="contact-widget-title">Contacto del viaje</strong>
+                <span id="contact-widget-person"></span>
+            </div>
+            <button id="contact-widget-close" class="contact-widget-close" type="button" aria-label="Minimizar contacto">−</button>
+        </header>
+        <div class="contact-widget-actions">
+            <a id="cell-call" class="secondary contact-action" href="tel:" hidden>📞 Llamar (Celular)</a>
+            <button id="call-button" class="secondary contact-action" type="button">🌐 Llamada por Internet</button>
+            <button id="end-call" class="secondary contact-action" type="button" hidden>Colgar</button>
+        </div>
+        <section id="chat-panel" class="chat">
+            <h3>Chat del viaje</h3>
+            <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+            <form id="chat-form" class="chat-form">
+                <input name="texto" maxlength="2000" placeholder="Escribe un mensaje..." required>
+                <button class="primary" type="submit">Enviar</button>
+            </form>
+            <p id="call-status" class="hint" aria-live="polite"></p>
+            <audio id="remote-audio" autoplay></audio>
+        </section>
+    </section>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-geosearch@5.2.0/dist/geosearch.umd.js"></script>
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -577,6 +577,42 @@
             font-size: 10px;
         }
 
+        .route-picker {
+            display: grid;
+            width: 100%;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px;
+            padding: 8px;
+            border: 1px solid var(--line);
+            border-radius: 9px;
+            background: rgba(36, 48, 79, 0.9);
+        }
+
+        .route-picker button,
+        .route-picker input {
+            min-width: 0;
+            min-height: 31px;
+            padding: 6px 8px;
+            font-size: 11px;
+        }
+
+        .route-picker input {
+            grid-column: 1 / -1;
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            background: var(--background);
+            color: var(--text);
+        }
+
+        .user-actions .clear-history-button {
+            border-color: rgba(255, 0, 51, 0.38);
+            color: #ff8397;
+        }
+
+        .user-actions .clear-history-button:hover:not(:disabled) {
+            background: rgba(255, 0, 51, 0.14);
+        }
+
         .follow-toggle {
             display: inline-flex;
             min-height: 34px;
@@ -1833,8 +1869,10 @@
                     createAction('✎ Editar nombre', 'route-user', () => renameUser(user)),
                     createAction('Mensaje', 'route-user', () => openChat(user)),
                     createAction('Llamar', 'route-user', () => callUser(user), !user.online),
-                    createAction('Ver recorrido', 'route-user', () => showRoute(user), !user.history?.length),
-                    createAction('🗑 Borrar Historial', 'route-user', () => clearUserHistory(user)),
+                    createAction('Ver recorrido', 'route-user', (event) => {
+                        toggleRoutePicker(card, user, event.currentTarget);
+                    }),
+                    createAction('🗑 Borrar historial', 'clear-history-button', () => clearUserHistory(user)),
                     followLabel
                 );
                 card.append(title, location, lastUpdate, actions);
@@ -1876,6 +1914,9 @@
                 if (followUserId === updatedUser.socketId) {
                     map.setView(position, Math.max(map.getZoom(), 16), { animate: false });
                 }
+            } else if (markers.has(updatedUser.socketId)) {
+                map.removeLayer(markers.get(updatedUser.socketId));
+                markers.delete(updatedUser.socketId);
             }
             renderUsers();
         }
@@ -1916,13 +1957,19 @@
             }
         }
 
-        function showRoute(user) {
-            const points = (user.history || []).slice(-20).map((point) => [point.lat, point.lng]);
-            if (points.length === 0) {
-                return;
-            }
+        // Dibuja el recorrido diario seleccionado y reemplaza cualquier recorrido previo.
+        function showRoute(user, dateKey) {
             if (activeRoute) {
                 map.removeLayer(activeRoute);
+                activeRoute = null;
+                activeRouteUserId = null;
+            }
+            const points = (user.dailyHistory?.[dateKey] || [])
+                .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
+                .map((point) => [point.lat, point.lng]);
+            if (points.length === 0) {
+                status.textContent = 'No hay recorrido para esta fecha.';
+                return;
             }
             activeRouteUserId = user.socketId;
             activeRoute = L.polyline(points, {
@@ -1935,17 +1982,75 @@
             } else {
                 map.fitBounds(activeRoute.getBounds(), { padding: [35, 35], maxZoom: 16 });
             }
+            status.textContent = `Recorrido de ${userDisplayName(user)} · ${dateKey}.`;
         }
 
+        function offsetDateKey(dateKey, offset) {
+            const [year, month, day] = dateKey.split('-').map(Number);
+            return new Date(Date.UTC(year, month - 1, day + offset)).toISOString().slice(0, 10);
+        }
+
+        function toggleRoutePicker(card, user, button) {
+            const existingPicker = card.querySelector('.route-picker');
+            if (existingPicker) {
+                existingPicker.remove();
+                button.setAttribute('aria-expanded', 'false');
+                return;
+            }
+
+            const picker = document.createElement('div');
+            picker.className = 'route-picker';
+            picker.setAttribute('aria-label', `Elegir fecha del recorrido de ${userDisplayName(user)}`);
+            const todayButton = document.createElement('button');
+            todayButton.type = 'button';
+            todayButton.textContent = 'Hoy';
+            todayButton.disabled = true;
+            const yesterdayButton = document.createElement('button');
+            yesterdayButton.type = 'button';
+            yesterdayButton.textContent = 'Ayer';
+            yesterdayButton.disabled = true;
+            const dateInput = document.createElement('input');
+            dateInput.type = 'date';
+            dateInput.setAttribute('aria-label', 'Elegir una fecha específica');
+            dateInput.disabled = true;
+            picker.append(todayButton, yesterdayButton, dateInput);
+            card.querySelector('.user-actions').appendChild(picker);
+            button.setAttribute('aria-expanded', 'true');
+
+            socket.emit('get-server-date', (result) => {
+                if (!result?.ok || typeof result.date !== 'string') {
+                    status.textContent = result?.error || 'No se pudo obtener la fecha del servidor.';
+                    return;
+                }
+                const serverDate = result.date;
+                dateInput.max = serverDate;
+                dateInput.value = serverDate;
+                todayButton.disabled = false;
+                yesterdayButton.disabled = false;
+                dateInput.disabled = false;
+                todayButton.addEventListener('click', () => showRoute(user, serverDate));
+                yesterdayButton.addEventListener('click', () => {
+                    showRoute(user, offsetDateKey(serverDate, -1));
+                });
+                dateInput.addEventListener('change', () => {
+                    if (dateInput.value && dateInput.value <= serverDate) {
+                        showRoute(user, dateInput.value);
+                    }
+                });
+            });
+        }
+
+        // Pide confirmación antes de borrar el historial y permite conservar la ubicación actual.
         function clearUserHistory(user) {
-            if (!window.confirm(`¿Borrar todo el historial de ubicaciones de ${userDisplayName(user)}? Esta acción no se puede deshacer.`)) {
+            if (!window.confirm('¿Estás seguro de que quieres borrar todo el historial de este usuario? Esta acción no se puede deshacer.')) {
                 return;
             }
             if (!socket.connected) {
                 status.textContent = 'No se pudo borrar el historial: el panel está desconectado.';
                 return;
             }
-            socket.emit('clear-user-history', { socketId: user.socketId }, (result) => {
+            const clearLocation = window.confirm('¿También deseas borrar la ubicación actual de este usuario?');
+            socket.emit('clear-user-history', { socketId: user.socketId, clearLocation }, (result) => {
                 if (!result?.ok || !result.user) {
                     status.textContent = result?.error || 'No se pudo borrar el historial.';
                     return;

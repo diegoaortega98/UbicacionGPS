@@ -1,5 +1,6 @@
 node_modules/
 .env
+GpsSystem.Api/appsettings.Development.json
 vapid-keys.json
 /android/app/google-services.json
 android/.gradle/
@@ -9,3 +10,6 @@ ios/App/DerivedData/
 ios/App/build/
 android/
 ios/
+**/bin/
+**/obj/
+__pycache__/
