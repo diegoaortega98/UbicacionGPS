@@ -27,12 +27,15 @@ public class ViajesController(
     {
         var pasajeroId = UsuarioId();
         var solicitud = await viajeService.SolicitarAsync(pasajeroId, request, cancellationToken);
+        var pasajero = await userManager.FindByIdAsync(pasajeroId)
+            ?? throw new InvalidOperationException("No se encontró el pasajero que solicitó el viaje.");
         await viajeHub.Clients.Group(ViajeHub.GrupoConductores)
             .SendAsync("NuevaSolicitud", new
             {
                 solicitud.Id,
                 solicitud.Estado,
                 solicitud.Precio,
+                pasajeroNombre = pasajero.Email,
                 request.OrigenLat,
                 request.OrigenLng,
                 request.DestinoLat,
@@ -44,6 +47,7 @@ public class ViajesController(
     }
 
     [HttpGet("disponibles")]
+    [HttpGet("pendientes")]
     [Authorize(Roles = RolesUsuario.Conductor)]
     public async Task<IActionResult> Disponibles(CancellationToken cancellationToken) =>
         Ok(await viajeService.ObtenerDisponiblesAsync(cancellationToken));
@@ -64,15 +68,27 @@ public class ViajesController(
     public async Task<IActionResult> Aceptar(Guid id, CancellationToken cancellationToken)
     {
         var viaje = await viajeService.AceptarAsync(id, UsuarioId(), cancellationToken);
-        var conductor = await userManager.FindByIdAsync(viaje.ConductorId!)
-            ?? throw new InvalidOperationException("No se encontró el conductor asignado al viaje.");
         await viajeHub.Clients.Group(ViajeHub.GrupoViaje(viaje.Id))
-            .SendAsync("ViajeAceptado", new
-            {
-                viajeId = viaje.Id,
-                conductorNombre = conductor.UserName ?? conductor.Email ?? "Conductor",
-                conductorTelefono = conductor.Telefono
-            }, cancellationToken);
+            .SendAsync("ViajeAceptado", viaje, cancellationToken);
+        await NotificarViajeAsync(viaje, cancellationToken);
+        return Ok(viaje);
+    }
+
+    [HttpPost("{id:guid}/rechazar")]
+    [Authorize(Roles = RolesUsuario.Conductor)]
+    public async Task<IActionResult> Rechazar(Guid id, CancellationToken cancellationToken)
+    {
+        await viajeService.RechazarAsync(id, UsuarioId(), cancellationToken);
+        return NoContent();
+    }
+
+    [HttpPost("{id:guid}/llegando")]
+    [Authorize(Roles = RolesUsuario.Conductor)]
+    public async Task<IActionResult> Llegando(Guid id, CancellationToken cancellationToken)
+    {
+        var viaje = await viajeService.MarcarLlegandoAsync(id, UsuarioId(), cancellationToken);
+        await viajeHub.Clients.Group(ViajeHub.GrupoViaje(viaje.Id))
+            .SendAsync("ConductorLlegando", new { viajeId = viaje.Id }, cancellationToken);
         await NotificarViajeAsync(viaje, cancellationToken);
         return Ok(viaje);
     }
@@ -93,10 +109,47 @@ public class ViajesController(
     [Authorize(Roles = RolesUsuario.Conductor)]
     public async Task<IActionResult> Finalizar(Guid id, CancellationToken cancellationToken)
     {
-        var viaje = await viajeService.FinalizarAsync(id, UsuarioId(), cancellationToken);
+        var resumen = await viajeService.FinalizarAsync(id, UsuarioId(), cancellationToken);
+        await NotificarViajeAsync(resumen.Viaje, cancellationToken);
+        return Ok(resumen);
+    }
+
+    [HttpPost("{id:guid}/cancelar")]
+    [Authorize]
+    public async Task<IActionResult> Cancelar(Guid id, CancellationToken cancellationToken)
+    {
+        Console.WriteLine("--- INTENTO DE CANCELACIÓN ---");
+        Console.WriteLine($"User.Identity.IsAuthenticated: {User.Identity?.IsAuthenticated}");
+        Console.WriteLine(
+            $"User Roles: {string.Join(", ", User.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value))}");
+        Console.WriteLine(
+            $"User ID (NameIdentifier): {User.FindFirstValue(ClaimTypes.NameIdentifier)}");
+        var usuarioId = UsuarioId();
+        var viaje = await viajeService.CancelarAsync(id, usuarioId, cancellationToken);
+        var rol = viaje.ConductorId == usuarioId ? RolesUsuario.Conductor : RolesUsuario.Pasajero;
+        await viajeHub.Clients.Group(ViajeHub.GrupoViaje(viaje.Id))
+            .SendAsync("ViajeCancelado", new
+            {
+                viajeId = viaje.Id,
+                canceladoPor = rol
+            }, cancellationToken);
         await NotificarViajeAsync(viaje, cancellationToken);
         return Ok(viaje);
     }
+
+    [HttpPost("{id:guid}/pago-recibido")]
+    [Authorize(Roles = RolesUsuario.Conductor)]
+    public async Task<IActionResult> ConfirmarPagoRecibido(Guid id, CancellationToken cancellationToken)
+    {
+        var viaje = await viajeService.ConfirmarPagoRecibidoAsync(id, UsuarioId(), cancellationToken);
+        await NotificarViajeAsync(viaje, cancellationToken);
+        return Ok(viaje);
+    }
+
+    [HttpGet("ganancias")]
+    [Authorize(Roles = RolesUsuario.Conductor)]
+    public async Task<ActionResult<GananciasResponse>> Ganancias(CancellationToken cancellationToken) =>
+        Ok(new GananciasResponse(await viajeService.ObtenerGananciasAsync(UsuarioId(), cancellationToken)));
 
     private async Task NotificarViajeAsync(ViajeResponse viaje, CancellationToken cancellationToken)
     {

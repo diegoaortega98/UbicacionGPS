@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#123B63">
     <title>UbicacionGPS</title>
+    <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
     <link rel="stylesheet" href="style.css">
@@ -32,6 +33,7 @@
                 <label>Correo electrónico<input name="email" type="email" autocomplete="email" required></label>
                 <label>Contraseña<input name="password" type="password" autocomplete="current-password" required></label>
                 <button class="primary" type="submit">Entrar</button>
+                <a id="forgot-password-link" class="text-link" href="#">¿Olvidaste tu contraseña?</a>
             </form>
             <form id="register-form" hidden>
                 <label>Correo electrónico<input name="email" type="email" autocomplete="email" required></label>
@@ -55,7 +57,10 @@
         <section id="user-panel" class="card" hidden>
             <div class="user-heading">
                 <div><h2 id="welcome"></h2><p id="connection-status">Conectando...</p></div>
-                <button id="logout" class="secondary compact" type="button">Salir</button>
+                <div class="user-actions">
+                    <button id="open-profile" class="secondary compact" type="button">👤 Mi Perfil</button>
+                    <button id="logout" class="secondary compact" type="button">Salir</button>
+                </div>
             </div>
             <button id="enable-notifications" class="secondary notification-button" type="button">Activar notificaciones</button>
 
@@ -91,26 +96,121 @@
                 </div>
                 <button id="request-ride" class="primary" type="button">Solicitar Viaje</button>
                 <div id="passenger-trip" class="trip-summary" hidden></div>
+                <p id="passenger-search-status" class="hint passenger-search-status" hidden>Buscando conductor...</p>
+                <section id="passenger-active-trip" class="trip-summary passenger-active-trip" hidden>
+                    <h3>Tu conductor</h3>
+                    <p>Conductor: <strong id="passenger-driver-name"></strong></p>
+                    <a id="passenger-driver-call" class="primary passenger-driver-call" hidden>📞 Llamar</a>
+                    <p id="passenger-driver-eta" role="status" aria-live="polite">Calculando tiempo de llegada...</p>
+                </section>
+                <button id="cancel-ride" class="secondary cancel-ride" type="button" hidden>Cancelar Viaje</button>
             </section>
 
             <section id="driver-panel" hidden>
-                <h3>Solicitudes disponibles</h3>
-                <button id="refresh-rides" class="secondary" type="button">Actualizar solicitudes</button>
-                <div id="available-rides" class="ride-list"></div>
+                <div class="driver-earnings" aria-live="polite">
+                    <span>Ganancias Acumuladas</span>
+                    <strong id="driver-earnings-amount">$0</strong>
+                </div>
+                <div id="available-rides-section">
+                    <h3>Solicitudes disponibles</h3>
+                    <button id="refresh-rides" class="secondary" type="button">Actualizar solicitudes</button>
+                    <div id="available-rides" class="ride-list"></div>
+                </div>
                 <div id="driver-trip" class="trip-summary" hidden>
-                    <h3>Viaje asignado</h3>
+                    <h3>Viaje actual</h3>
+                    <strong id="driver-trip-price" class="driver-trip-price"></strong>
+                    <p id="driver-trip-passenger"></p>
+                    <p id="driver-trip-distance"></p>
                     <p id="driver-trip-info"></p>
+                    <div class="driver-trip-actions">
+                        <button id="arriving-ride" class="secondary" type="button" hidden>Estoy llegando</button>
+                        <button id="driver-cancel-ride" class="danger" type="button" hidden>Cancelar Viaje</button>
+                    </div>
                     <form id="pin-form">
                         <label>PIN de cuatro dígitos<input name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required></label>
                         <button class="primary" type="submit">Validar PIN e iniciar</button>
                     </form>
                     <button id="finish-ride" class="primary" type="button" hidden>Finalizar viaje</button>
                 </div>
+                <div id="payment-summary" class="trip-summary payment-summary" hidden>
+                    <h3>Resumen del viaje</h3>
+                    <div class="payment-line"><span>Total del viaje</span><strong id="payment-total"></strong></div>
+                    <div class="payment-line"><span>Comisión de plataforma (15%)</span><strong id="payment-commission"></strong></div>
+                    <div class="payment-line payment-net"><span>Tus ganancias</span><strong id="payment-net"></strong></div>
+                    <button id="confirm-payment" class="primary" type="button">Pago Recibido</button>
+                </div>
+                <button id="driver-availability" class="driver-availability" type="button" aria-pressed="false">Conectarse</button>
             </section>
 
             <p id="app-message" class="message" aria-live="polite"></p>
         </section>
     </aside>
+
+    <section id="forgot-password-modal" class="modal-backdrop" hidden>
+        <div class="auth-modal card" role="dialog" aria-modal="true" aria-labelledby="forgot-password-title">
+            <header class="profile-modal-header">
+                <h2 id="forgot-password-title">Recuperar contraseña</h2>
+                <button id="close-forgot-password" class="secondary compact" type="button" aria-label="Cerrar">×</button>
+            </header>
+            <form id="forgot-password-form">
+                <label>Correo electrónico<input name="email" type="email" autocomplete="email" maxlength="256" required></label>
+                <p id="forgot-password-message" class="message" aria-live="polite"></p>
+                <div class="profile-modal-actions">
+                    <button class="primary" type="submit">Enviar código</button>
+                    <button id="cancel-forgot-password" class="secondary" type="button">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section id="reset-password-modal" class="modal-backdrop" hidden>
+        <div class="auth-modal card" role="dialog" aria-modal="true" aria-labelledby="reset-password-title">
+            <header class="profile-modal-header">
+                <h2 id="reset-password-title">Restablecer contraseña</h2>
+                <button id="close-reset-password" class="secondary compact" type="button" aria-label="Cerrar">×</button>
+            </header>
+            <form id="reset-password-form">
+                <label>Correo electrónico<input name="email" type="email" autocomplete="email" readonly required></label>
+                <p class="hint">En desarrollo local, el código aparece en la consola del servidor.</p>
+                <label>Código de 6 dígitos
+                    <input name="codigo" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required>
+                </label>
+                <label>Nueva contraseña (mínimo 10 caracteres)
+                    <input name="passwordNueva" type="password" autocomplete="new-password" minlength="10" maxlength="128" required>
+                </label>
+                <p id="reset-password-message" class="message" aria-live="polite"></p>
+                <div class="profile-modal-actions">
+                    <button class="primary" type="submit">Guardar contraseña</button>
+                    <button id="cancel-reset-password" class="secondary" type="button">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section id="profile-modal" class="modal-backdrop" hidden>
+        <div class="profile-modal card" role="dialog" aria-modal="true" aria-labelledby="profile-title">
+            <header class="profile-modal-header">
+                <h2 id="profile-title">Mi Perfil</h2>
+                <button id="close-profile" class="secondary compact" type="button" aria-label="Cerrar perfil">×</button>
+            </header>
+            <form id="profile-form">
+                <label>Nombre<input name="nombre" type="text" autocomplete="name" maxlength="100" required></label>
+                <label>Teléfono<input name="telefono" type="tel" autocomplete="tel" maxlength="32" required></label>
+                <button id="toggle-password-fields" class="secondary" type="button">¿Quieres cambiar tu contraseña?</button>
+                <div id="password-change-fields" class="password-change-fields" hidden>
+                    <label>Contraseña actual<input name="passwordActual" type="password" autocomplete="current-password" maxlength="128"></label>
+                    <label>Nueva contraseña (mínimo 10 caracteres)
+                        <input name="passwordNueva" type="password" autocomplete="new-password" minlength="10" maxlength="128">
+                    </label>
+                </div>
+                <p id="profile-message" class="message" aria-live="polite"></p>
+                <div class="profile-modal-actions">
+                    <button class="primary" type="submit">Guardar cambios</button>
+                    <button id="cancel-profile" class="secondary" type="button">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </section>
 
     <button id="contact-widget-toggle" class="contact-widget-toggle" type="button" hidden>Chat y llamada</button>
     <section id="contact-widget" class="floating-contact-widget" aria-hidden="true" hidden>
@@ -122,10 +222,12 @@
             <button id="contact-widget-close" class="contact-widget-close" type="button" aria-label="Minimizar contacto">−</button>
         </header>
         <div class="contact-widget-actions">
-            <a id="cell-call" class="secondary contact-action" href="tel:" hidden>📞 Llamar (Celular)</a>
+            <a id="cell-call" class="secondary contact-action" hidden>📞 Llamar por Celular</a>
+            <button id="copy-phone" class="secondary contact-action" type="button" hidden>📋 Copiar Número</button>
             <button id="call-button" class="secondary contact-action" type="button">🌐 Llamada por Internet</button>
             <button id="end-call" class="secondary contact-action" type="button" hidden>Colgar</button>
         </div>
+        <p id="copy-phone-message" class="copy-feedback" role="status" aria-live="polite"></p>
         <section id="chat-panel" class="chat">
             <h3>Chat del viaje</h3>
             <div id="chat-messages" class="chat-messages" aria-live="polite"></div>

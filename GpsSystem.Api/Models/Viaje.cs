@@ -6,7 +6,10 @@ public static class EstadosViaje
 {
     public const string Solicitado = "Solicitado";
     public const string Aceptado = "Aceptado";
+    public const string Llegando = "Llegando";
     public const string EnCurso = "EnCurso";
+    public const string PendientePago = "PendientePago";
+    public const string Cancelado = "Cancelado";
     public const string Finalizado = "Finalizado";
 }
 

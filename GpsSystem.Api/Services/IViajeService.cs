@@ -8,9 +8,22 @@ public interface IViajeService
 
     Task<ViajeResponse> AceptarAsync(Guid viajeId, string conductorId, CancellationToken cancellationToken);
 
+    Task RechazarAsync(Guid viajeId, string conductorId, CancellationToken cancellationToken);
+
+    Task<ViajeResponse> MarcarLlegandoAsync(Guid viajeId, string conductorId, CancellationToken cancellationToken);
+
+    Task<ViajeResponse> CancelarAsync(
+        Guid viajeId,
+        string usuarioId,
+        CancellationToken cancellationToken);
+
     Task<ViajeResponse> IniciarAsync(Guid viajeId, string conductorId, string pin, CancellationToken cancellationToken);
 
-    Task<ViajeResponse> FinalizarAsync(Guid viajeId, string conductorId, CancellationToken cancellationToken);
+    Task<FinalizacionViajeResponse> FinalizarAsync(Guid viajeId, string conductorId, CancellationToken cancellationToken);
+
+    Task<ViajeResponse> ConfirmarPagoRecibidoAsync(Guid viajeId, string conductorId, CancellationToken cancellationToken);
+
+    Task<decimal> ObtenerGananciasAsync(string conductorId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ViajeResponse>> ObtenerDisponiblesAsync(CancellationToken cancellationToken);
 

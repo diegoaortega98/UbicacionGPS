@@ -30,6 +30,7 @@ public class NotificacionesController(
 
     [Authorize]
     [HttpPost("token")]
+    [HttpPost("registrar-token")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> RegistrarToken(
         [FromBody] RegistrarTokenNotificacionRequest request,

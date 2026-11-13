@@ -39,6 +39,28 @@ Content-Type: application/json
 
 ###
 
+### Solicitar código para restablecer contraseña
+POST {{GpsSystem.Api_HostAddress}}/api/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "pasajero@example.com"
+}
+
+###
+
+### Restablecer contraseña con el código de seis dígitos impreso en la consola local
+POST {{GpsSystem.Api_HostAddress}}/api/auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "pasajero@example.com",
+  "codigo": "123456",
+  "passwordNueva": "Nueva-Clave-123"
+}
+
+###
+
 ### Leer configuración web pública de Firebase Messaging
 GET {{GpsSystem.Api_HostAddress}}/api/notificaciones/config
 

@@ -4,6 +4,12 @@ namespace GpsSystem.Api.Models;
 
 public class Usuario : IdentityUser
 {
+    public string Nombre { get; set; } = string.Empty;
+
+    public string? ResetCode { get; set; }
+
+    public DateTime? ResetCodeExpiration { get; set; }
+
     public string Rol { get; set; } = RolesUsuario.Pasajero;
 
     public string Telefono { get; set; } = string.Empty;

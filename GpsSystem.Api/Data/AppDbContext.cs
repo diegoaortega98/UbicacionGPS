@@ -39,6 +39,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             .IsRequired();
 
         modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.Nombre)
+            .HasMaxLength(100)
+            .IsRequired();
+
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.ResetCode)
+            .HasMaxLength(6);
+
+        modelBuilder.Entity<Usuario>()
             .Property(usuario => usuario.Telefono)
             .HasMaxLength(32)
             .IsRequired();

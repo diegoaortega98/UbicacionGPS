@@ -11,6 +11,12 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+var firebaseVapidKey = Environment.GetEnvironmentVariable("FIREBASE_VAPID_KEY");
+if (!string.IsNullOrWhiteSpace(firebaseVapidKey)
+    && string.IsNullOrWhiteSpace(builder.Configuration["Firebase:Web:VapidKey"]))
+{
+    builder.Configuration["Firebase:Web:VapidKey"] = firebaseVapidKey;
+}
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -81,7 +87,8 @@ builder.Services.AddIdentityCore<Usuario>(options =>
         options.Password.RequireNonAlphanumeric = true;
     })
     .AddRoles<IdentityRole>()
-    .AddEntityFrameworkStores<AppDbContext>();
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddDefaultTokenProviders();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IViajeService, ViajeService>();
 builder.Services.AddSingleton<FirebaseMessagingProvider>();
@@ -108,13 +115,35 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             {
                 var accessToken = context.Request.Query["access_token"];
                 var path = context.HttpContext.Request.Path;
-                if (!string.IsNullOrEmpty(accessToken)
-                    && (path.StartsWithSegments("/hubs/viajes")
-                        || path.StartsWithSegments("/hubs/viaje")
-                        || path.StartsWithSegments("/hubs/chat")
-                        || path.StartsWithSegments("/hubs/llamada")))
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
                 {
                     context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            },
+            OnAuthenticationFailed = context =>
+            {
+                if (builder.Environment.IsDevelopment())
+                {
+                    var reason = context.Exception switch
+                    {
+                        SecurityTokenExpiredException expired => $"token expiró en {expired.Expires:O}",
+                        SecurityTokenInvalidSignatureException => "firma inválida",
+                        SecurityTokenInvalidIssuerException => "emisor inválido",
+                        SecurityTokenInvalidAudienceException => "audiencia inválida",
+                        _ => context.Exception.GetType().Name
+                    };
+                    Console.WriteLine($"Falló la autenticación JWT: {reason}");
+                }
+
+                return Task.CompletedTask;
+            },
+            OnChallenge = context =>
+            {
+                if (builder.Environment.IsDevelopment() && !string.IsNullOrEmpty(context.ErrorDescription))
+                {
+                    Console.WriteLine($"Desafío JWT: {context.ErrorDescription}");
                 }
 
                 return Task.CompletedTask;
@@ -124,6 +153,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+_ = app.Services.GetRequiredService<FirebaseMessagingProvider>();
 
 app.UseExceptionHandler();
 if (app.Environment.IsDevelopment())

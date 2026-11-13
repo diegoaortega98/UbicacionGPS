@@ -1,7 +1,11 @@
 using System.Security.Claims;
+using System.Globalization;
+using System.Security.Cryptography;
 using GpsSystem.Api.Data;
 using GpsSystem.Api.Models;
 using GpsSystem.Api.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +17,8 @@ namespace GpsSystem.Api.Controllers;
 public class AuthController(
     UserManager<Usuario> userManager,
     ITokenService tokenService,
-    AppDbContext dbContext) : ControllerBase
+    AppDbContext dbContext,
+    IWebHostEnvironment environment) : ControllerBase
 {
     [HttpPost("register")]
     [ProducesResponseType<AuthResponse>(StatusCodes.Status201Created)]
@@ -21,6 +26,11 @@ public class AuthController(
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Registrar([FromBody] RegistroRequest request, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(request.Telefono))
+        {
+            return BadRequest(new ProblemDetails { Status = 400, Title = "El teléfono es obligatorio." });
+        }
+
         if (request.Rol is not (RolesUsuario.Pasajero or RolesUsuario.Conductor))
         {
             return BadRequest(new ProblemDetails { Status = 400, Title = "El rol debe ser Pasajero o Conductor." });
@@ -49,6 +59,7 @@ public class AuthController(
         {
             UserName = request.Email,
             Email = request.Email,
+            Nombre = string.Empty,
             Telefono = request.Telefono.Trim(),
             PhoneNumber = request.Telefono.Trim(),
             Rol = request.Rol
@@ -85,7 +96,7 @@ public class AuthController(
 
         await transaction.CommitAsync(cancellationToken);
         var token = tokenService.CrearToken(usuario);
-        return Ok(new AuthResponse(token, usuario.Id, usuario.Email!, usuario.Rol));
+        return Ok(new AuthResponse(token, usuario.Id, usuario.Email!, usuario.Rol, usuario.Telefono, usuario.Nombre));
     }
 
     [HttpPost("login")]
@@ -110,6 +121,192 @@ public class AuthController(
         }
 
         var token = tokenService.CrearToken(usuario);
-        return Ok(new AuthResponse(token, usuario.Id, usuario.Email!, usuario.Rol));
+        return Ok(new AuthResponse(token, usuario.Id, usuario.Email!, usuario.Rol, usuario.Telefono, usuario.Nombre));
+    }
+
+    [HttpPost("forgot-password")]
+    [ProducesResponseType<RestablecimientoContrasenaResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<RestablecimientoContrasenaResponse>> SolicitarRestablecimiento(
+        [FromBody] SolicitarCodigoRestablecimientoRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var usuario = await userManager.FindByEmailAsync(request.Email.Trim());
+        if (usuario is not null)
+        {
+            var codigo = RandomNumberGenerator.GetInt32(0, 1_000_000)
+                .ToString("D6", CultureInfo.InvariantCulture);
+            usuario.ResetCode = codigo;
+            usuario.ResetCodeExpiration = DateTime.UtcNow.AddMinutes(15);
+
+            var resultado = await userManager.UpdateAsync(usuario);
+            if (!resultado.Succeeded)
+            {
+                return Problem(
+                    statusCode: StatusCodes.Status500InternalServerError,
+                    title: "No se pudo guardar el código de restablecimiento.",
+                    detail: string.Join("; ", resultado.Errors.Select(error => error.Description)));
+            }
+
+            if (environment.IsDevelopment())
+            {
+                Console.WriteLine($"Código de restablecimiento para {usuario.Email}: {codigo}");
+            }
+        }
+
+        return Ok(new RestablecimientoContrasenaResponse(
+            "Si el correo está registrado, se generó un código de restablecimiento."));
+    }
+
+    [HttpPost("reset-password")]
+    [ProducesResponseType<RestablecimientoContrasenaResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<RestablecimientoContrasenaResponse>> RestablecerContrasena(
+        [FromBody] RestablecerContrasenaRequest request,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var usuario = await userManager.FindByEmailAsync(request.Email.Trim());
+        if (usuario is null
+            || !string.Equals(usuario.ResetCode, request.Codigo, StringComparison.Ordinal)
+            || usuario.ResetCodeExpiration is not DateTime expiration
+            || expiration <= DateTime.UtcNow)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "El código no es válido o ha expirado."
+            });
+        }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var resetToken = await userManager.GeneratePasswordResetTokenAsync(usuario);
+        var resetResult = await userManager.ResetPasswordAsync(usuario, resetToken, request.PasswordNueva);
+        if (!resetResult.Succeeded)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return BadRequest(new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "No se pudo restablecer la contraseña.",
+                Detail = string.Join("; ", resetResult.Errors.Select(error => error.Description))
+            });
+        }
+
+        usuario.ResetCode = null;
+        usuario.ResetCodeExpiration = null;
+        var updateResult = await userManager.UpdateAsync(usuario);
+        if (!updateResult.Succeeded)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "No se pudo invalidar el código de restablecimiento.",
+                detail: string.Join("; ", updateResult.Errors.Select(error => error.Description)));
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return Ok(new RestablecimientoContrasenaResponse("La contraseña se restableció correctamente."));
+    }
+
+    [HttpGet("perfil")]
+    [Authorize]
+    public async Task<ActionResult<PerfilUsuarioResponse>> Perfil(CancellationToken cancellationToken)
+    {
+        var usuarioId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(usuarioId))
+        {
+            return Unauthorized();
+        }
+
+        var perfil = await dbContext.Users.AsNoTracking()
+            .Where(usuario => usuario.Id == usuarioId)
+            .Select(usuario => new PerfilUsuarioResponse(usuario.Nombre, usuario.Telefono))
+            .SingleOrDefaultAsync(cancellationToken);
+        return perfil is null ? NotFound() : Ok(perfil);
+    }
+
+    [HttpPut("perfil")]
+    [Authorize]
+    [ProducesResponseType<PerfilUsuarioResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<PerfilUsuarioResponse>> ActualizarPerfil(
+        [FromBody] ActualizarPerfilRequest request,
+        CancellationToken cancellationToken)
+    {
+        var usuarioId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(usuarioId))
+        {
+            return Unauthorized();
+        }
+
+        if (!string.IsNullOrEmpty(request.PasswordNueva) && request.PasswordNueva.Length < 10)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Status = 400,
+                Title = "La nueva contraseña debe contener al menos 10 caracteres."
+            });
+        }
+
+        var nombre = request.Nombre.Trim();
+        var telefono = request.Telefono.Trim();
+        if (nombre.Length == 0 || telefono.Length == 0)
+        {
+            return BadRequest(new ProblemDetails { Status = 400, Title = "El nombre y el teléfono son obligatorios." });
+        }
+
+        var usuario = await userManager.FindByIdAsync(usuarioId);
+        if (usuario is null)
+        {
+            return NotFound();
+        }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        if (!string.IsNullOrEmpty(request.PasswordNueva))
+        {
+            if (string.IsNullOrEmpty(request.PasswordActual))
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return BadRequest(new ProblemDetails
+                {
+                    Status = 400,
+                    Title = "Debes ingresar tu contraseña actual para cambiarla."
+                });
+            }
+
+            var passwordResult = await userManager.ChangePasswordAsync(
+                usuario, request.PasswordActual, request.PasswordNueva);
+            if (!passwordResult.Succeeded)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return BadRequest(new ProblemDetails
+                {
+                    Status = 400,
+                    Title = "No se pudo cambiar la contraseña.",
+                    Detail = string.Join("; ", passwordResult.Errors.Select(error => error.Description))
+                });
+            }
+        }
+
+        usuario.Nombre = nombre;
+        usuario.Telefono = telefono;
+        usuario.PhoneNumber = telefono;
+        var updateResult = await userManager.UpdateAsync(usuario);
+        if (!updateResult.Succeeded)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return BadRequest(new ProblemDetails
+            {
+                Status = 400,
+                Title = "No se pudo actualizar el perfil.",
+                Detail = string.Join("; ", updateResult.Errors.Select(error => error.Description))
+            });
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return Ok(new PerfilUsuarioResponse(usuario.Nombre, usuario.Telefono));
     }
 }

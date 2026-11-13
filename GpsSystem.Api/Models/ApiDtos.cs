@@ -34,8 +34,53 @@ public sealed record LoginRequest
     public required string Password { get; init; }
 }
 
-/// <summary>Credenciales de acceso y rol del usuario autenticado.</summary>
-public sealed record AuthResponse(string Token, string UsuarioId, string Email, string Rol);
+/// <summary>Correo al que se solicita enviar un código para restablecer la contraseña.</summary>
+public sealed record SolicitarCodigoRestablecimientoRequest
+{
+    [Required, EmailAddress, MaxLength(256)]
+    public required string Email { get; init; }
+}
+
+/// <summary>Correo, código temporal y nueva contraseña para restablecer el acceso.</summary>
+public sealed record RestablecerContrasenaRequest
+{
+    [Required, EmailAddress, MaxLength(256)]
+    public required string Email { get; init; }
+
+    [Required, RegularExpression(@"^\d{6}$")]
+    public required string Codigo { get; init; }
+
+    [Required, MinLength(10), MaxLength(128)]
+    public required string PasswordNueva { get; init; }
+}
+
+/// <summary>Mensaje de resultado de una operación de restablecimiento de contraseña.</summary>
+public sealed record RestablecimientoContrasenaResponse(string Mensaje);
+
+/// <summary>Credenciales de acceso, rol y datos de perfil del usuario autenticado.</summary>
+public sealed record AuthResponse(string Token, string UsuarioId, string Email, string Rol, string Telefono, string Nombre);
+
+/// <summary>Datos de perfil del usuario autenticado.</summary>
+public sealed record PerfilUsuarioResponse(string Nombre, string Telefono);
+
+/// <summary>Datos que se pueden actualizar en el perfil del usuario autenticado.</summary>
+public sealed record ActualizarPerfilRequest
+{
+    [Required, StringLength(100, MinimumLength = 1)]
+    public required string Nombre { get; init; }
+
+    [Required, Phone, StringLength(32, MinimumLength = 1)]
+    public required string Telefono { get; init; }
+
+    [MaxLength(128)]
+    public string? PasswordActual { get; init; }
+
+    [MaxLength(128)]
+    public string? PasswordNueva { get; init; }
+}
+
+/// <summary>Ganancias netas acumuladas por el conductor en viajes finalizados.</summary>
+public sealed record GananciasResponse(decimal GananciasAcumuladas);
 
 /// <summary>Datos de origen y destino para solicitar un viaje.</summary>
 public sealed record SolicitarViajeRequest
@@ -65,6 +110,13 @@ public sealed record SolicitudViajeResponse(
     decimal Precio,
     DateTimeOffset FechaCreacion);
 
+/// <summary>Desglose del cobro al finalizar un viaje, pendiente de confirmar su recepción.</summary>
+public sealed record FinalizacionViajeResponse(
+    ViajeResponse Viaje,
+    decimal MontoTotal,
+    decimal Comision,
+    decimal GananciaNeta);
+
 /// <summary>Resumen de un viaje sin información secreta de verificación.</summary>
 public sealed record ViajeResponse(
     Guid Id,
@@ -78,8 +130,11 @@ public sealed record ViajeResponse(
     decimal Precio,
     decimal ComisionPlataforma,
     DateTimeOffset FechaCreacion,
+    string? PasajeroNombre,
     string? Vehiculo,
-    string? Placa);
+    string? Placa,
+    string? ConductorNombre,
+    string? ConductorTelefono);
 
 /// <summary>PIN de cuatro dígitos entregado por el pasajero al conductor.</summary>
 public sealed record IniciarViajeRequest

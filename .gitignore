@@ -3,6 +3,8 @@ package.json
 package-lock.json
 render.yaml
 .env
+/firebase-adminsdk.json
+/temp_vapid_key.txt
 GpsSystem.Api/appsettings.Development.json
 vapid-keys.json
 /android/app/google-services.json
