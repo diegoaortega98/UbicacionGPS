@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using GpsSystem.Api.Data;
 using GpsSystem.Api.Models;
+using GpsSystem.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -11,12 +12,14 @@ namespace GpsSystem.Api.Hubs;
 public sealed class ViajeHub : ViajeHubBase
 {
     private readonly AppDbContext _dbContext;
+    private readonly IConductoresActivosTracker _conductoresActivos;
 
     public const string GrupoConductores = "conductores";
 
-    public ViajeHub(AppDbContext dbContext) : base(dbContext)
+    public ViajeHub(AppDbContext dbContext, IConductoresActivosTracker conductoresActivos) : base(dbContext)
     {
         _dbContext = dbContext;
+        _conductoresActivos = conductoresActivos;
     }
 
     public static string GrupoViaje(Guid viajeId) => $"viaje_{viajeId:N}";
@@ -31,11 +34,19 @@ public sealed class ViajeHub : ViajeHubBase
         if (disponible)
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, GrupoConductores);
+            _conductoresActivos.EstablecerDisponibilidad(Context.ConnectionId, UsuarioId, true);
         }
         else
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, GrupoConductores);
+            _conductoresActivos.EstablecerDisponibilidad(Context.ConnectionId, UsuarioId, false);
         }
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        _conductoresActivos.Desconectar(Context.ConnectionId);
+        await base.OnDisconnectedAsync(exception);
     }
 
     public async Task UnirseViaje(Guid viajeId)

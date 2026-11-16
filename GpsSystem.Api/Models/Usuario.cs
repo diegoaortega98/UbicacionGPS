@@ -23,6 +23,7 @@ public class Usuario : IdentityUser
 
 public static class RolesUsuario
 {
+    public const string Admin = "Admin";
     public const string Pasajero = "Pasajero";
     public const string Conductor = "Conductor";
 }

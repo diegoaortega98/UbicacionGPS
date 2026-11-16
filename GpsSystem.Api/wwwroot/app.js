@@ -229,6 +229,9 @@ document.getElementById('open-trip-history').addEventListener('click', async () 
     document.getElementById('trip-history-modal').hidden = false;
     await loadTripHistory();
 });
+document.getElementById('open-admin-panel').addEventListener('click', () => {
+    window.location.href = '/admin.html';
+});
 document.getElementById('close-trip-history').addEventListener('click', () => {
     document.getElementById('trip-history-modal').hidden = true;
 });
@@ -838,6 +841,7 @@ async function showAuthenticatedUi() {
     updateWelcome(account);
     document.getElementById('passenger-panel').hidden = account.rol !== 'Pasajero';
     document.getElementById('driver-panel').hidden = account.rol !== 'Conductor';
+    document.getElementById('open-admin-panel').hidden = account.rol !== 'Admin';
     document.getElementById('enable-notifications').textContent =
         sessionStorage.getItem('gps-fcm-token') ? 'Notificaciones activadas' : 'Activar notificaciones';
     showMessage(authMessage);

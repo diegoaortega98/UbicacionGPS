@@ -68,7 +68,7 @@ public sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
         await dbContext.Database.EnsureCreatedAsync();
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-        foreach (var role in new[] { RolesUsuario.Pasajero, RolesUsuario.Conductor })
+        foreach (var role in new[] { RolesUsuario.Pasajero, RolesUsuario.Conductor, RolesUsuario.Admin })
         {
             if (!await roleManager.RoleExistsAsync(role))
             {

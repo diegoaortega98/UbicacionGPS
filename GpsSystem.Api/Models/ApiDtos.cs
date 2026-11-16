@@ -188,3 +188,11 @@ public sealed record FirebaseWebConfigResponse(
     string? MessagingSenderId,
     string? AppId,
     string? VapidKey);
+
+/// <summary>Estadísticas administrativas de viajes, comisiones y disponibilidad.</summary>
+public sealed record AdminEstadisticasResponse(
+    long TotalViajes,
+    decimal ComisionesTotales,
+    long ViajesHoy,
+    int ConductoresActivos,
+    decimal RecaudadoHoy);

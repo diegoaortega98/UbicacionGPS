@@ -109,6 +109,12 @@ Authorization: Bearer {{token}}
 
 ###
 
+### Estadísticas administrativas (token de Admin)
+GET {{GpsSystem.Api_HostAddress}}/api/admin/estadisticas
+Authorization: Bearer {{token}}
+
+###
+
 ### Calificar viaje finalizado (token de pasajero)
 POST {{GpsSystem.Api_HostAddress}}/api/viajes/{{viajeId}}/calificar
 Authorization: Bearer {{token}}

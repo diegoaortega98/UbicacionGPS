@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#123B63">
+    <title>Panel de Administrador | UbicacionGPS</title>
+    <style>
+        :root {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #233142;
+            background: #f4f6f8;
+            font-synthesis: none;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 18px max(20px, calc((100vw - 1100px) / 2));
+            background: #123b63;
+            color: #fff;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        main {
+            width: min(1100px, calc(100% - 32px));
+            margin: 32px auto;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+        }
+
+        .metric-card {
+            min-height: 145px;
+            padding: 22px;
+            border: 1px solid #d5dee7;
+            border-radius: 12px;
+            background: #fff;
+            box-shadow: 0 5px 18px rgb(18 59 99 / 9%);
+        }
+
+        .metric-card h2 {
+            margin: 0 0 16px;
+            color: #536477;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .metric-card output {
+            color: #123b63;
+            font-size: clamp(24px, 4vw, 32px);
+            font-weight: 800;
+            overflow-wrap: anywhere;
+        }
+
+        #dashboard-status {
+            min-height: 24px;
+            margin: 0 0 16px;
+            color: #536477;
+        }
+
+        a,
+        button {
+            min-height: 38px;
+            padding: 9px 13px;
+            border: 1px solid #d5dee7;
+            border-radius: 7px;
+            background: #fff;
+            color: #123b63;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        a:hover,
+        button:hover {
+            background: #eaf1f7;
+        }
+
+        @media (max-width: 560px) {
+            header {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+        }
+    </style>
+    <script src="/admin.js" defer></script>
+</head>
+<body>
+    <header>
+        <h1>UbicacionGPS · Panel de Administrador</h1>
+        <div class="header-actions">
+            <button id="refresh-dashboard" type="button">Actualizar</button>
+            <button id="admin-logout" type="button">Salir</button>
+        </div>
+    </header>
+    <main>
+        <p id="dashboard-status" role="status" aria-live="polite">Cargando estadísticas...</p>
+        <section class="dashboard-grid" aria-label="Estadísticas del negocio">
+            <article class="metric-card">
+                <h2>Total de viajes finalizados</h2>
+                <output id="total-viajes">—</output>
+            </article>
+            <article class="metric-card">
+                <h2>Comisiones totales</h2>
+                <output id="comisiones-totales">—</output>
+            </article>
+            <article class="metric-card">
+                <h2>Viajes finalizados hoy</h2>
+                <output id="viajes-hoy">—</output>
+            </article>
+            <article class="metric-card">
+                <h2>Conductores activos</h2>
+                <output id="conductores-activos">—</output>
+            </article>
+            <article class="metric-card">
+                <h2>Comisiones generadas hoy</h2>
+                <output id="recaudado-hoy">—</output>
+            </article>
+        </section>
+    </main>
+</body>
+</html>

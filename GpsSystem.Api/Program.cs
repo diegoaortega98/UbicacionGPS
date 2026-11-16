@@ -91,6 +91,7 @@ builder.Services.AddIdentityCore<Usuario>(options =>
     .AddDefaultTokenProviders();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IViajeService, ViajeService>();
+builder.Services.AddSingleton<IConductoresActivosTracker, ConductoresActivosTracker>();
 builder.Services.AddSingleton<FirebaseMessagingProvider>();
 builder.Services.AddScoped<NotificacionService>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -184,7 +185,7 @@ if (!app.Environment.IsEnvironment("Testing"))
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.MigrateAsync();
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    foreach (var role in new[] { RolesUsuario.Pasajero, RolesUsuario.Conductor })
+    foreach (var role in new[] { RolesUsuario.Pasajero, RolesUsuario.Conductor, RolesUsuario.Admin })
     {
         if (!await roleManager.RoleExistsAsync(role))
         {
@@ -192,6 +193,66 @@ if (!app.Environment.IsEnvironment("Testing"))
             if (!result.Succeeded)
             {
                 throw new InvalidOperationException($"No se pudo inicializar el rol {role}: {string.Join(", ", result.Errors.Select(error => error.Description))}");
+            }
+        }
+    }
+
+    var adminEmail = "admin@ubicaciongps.com";
+    var adminPassword = builder.Configuration["ADMIN_INITIAL_PASSWORD"];
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    if (string.IsNullOrWhiteSpace(adminPassword))
+    {
+        logger.LogWarning(
+            "No se creó {AdminEmail}; configura ADMIN_INITIAL_PASSWORD con una contraseña segura para inicializar el administrador.",
+            adminEmail);
+    }
+    else
+    {
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<Usuario>>();
+        var admin = await userManager.FindByEmailAsync(adminEmail);
+        if (admin is null)
+        {
+            admin = new Usuario
+            {
+                UserName = adminEmail,
+                Email = adminEmail,
+                Nombre = "Administrador",
+                Telefono = "0000000000",
+                PhoneNumber = "0000000000",
+                Rol = RolesUsuario.Admin
+            };
+
+            await using var adminTransaction = await dbContext.Database.BeginTransactionAsync();
+            var createResult = await userManager.CreateAsync(admin, adminPassword);
+            if (!createResult.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    $"No se pudo crear el usuario administrador: {string.Join(", ", createResult.Errors.Select(error => error.Description))}");
+            }
+
+            var roleResult = await userManager.AddToRoleAsync(admin, RolesUsuario.Admin);
+            if (!roleResult.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    $"No se pudo asignar el rol Admin: {string.Join(", ", roleResult.Errors.Select(error => error.Description))}");
+            }
+
+            await adminTransaction.CommitAsync();
+            logger.LogInformation("Se creó el usuario administrador {AdminEmail}.", adminEmail);
+        }
+        else if (!await userManager.IsInRoleAsync(admin, RolesUsuario.Admin))
+        {
+            throw new InvalidOperationException(
+                $"El correo {adminEmail} ya existe sin el rol Admin; no se elevaron sus privilegios automáticamente.");
+        }
+        else if (admin.Rol != RolesUsuario.Admin)
+        {
+            admin.Rol = RolesUsuario.Admin;
+            var updateResult = await userManager.UpdateAsync(admin);
+            if (!updateResult.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    $"No se pudo sincronizar el rol del administrador: {string.Join(", ", updateResult.Errors.Select(error => error.Description))}");
             }
         }
     }
