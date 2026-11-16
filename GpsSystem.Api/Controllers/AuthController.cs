@@ -222,7 +222,11 @@ public class AuthController(
 
         var perfil = await dbContext.Users.AsNoTracking()
             .Where(usuario => usuario.Id == usuarioId)
-            .Select(usuario => new PerfilUsuarioResponse(usuario.Nombre, usuario.Telefono))
+            .Select(usuario => new PerfilUsuarioResponse(
+                usuario.Nombre,
+                usuario.Telefono,
+                usuario.PromedioCalificacion,
+                usuario.TotalCalificaciones))
             .SingleOrDefaultAsync(cancellationToken);
         return perfil is null ? NotFound() : Ok(perfil);
     }
@@ -307,6 +311,10 @@ public class AuthController(
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return Ok(new PerfilUsuarioResponse(usuario.Nombre, usuario.Telefono));
+        return Ok(new PerfilUsuarioResponse(
+            usuario.Nombre,
+            usuario.Telefono,
+            usuario.PromedioCalificacion,
+            usuario.TotalCalificaciones));
     }
 }

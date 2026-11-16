@@ -52,6 +52,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             .HasMaxLength(32)
             .IsRequired();
 
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.PromedioCalificacion)
+            .HasDefaultValue(5.0);
+
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.TotalCalificaciones)
+            .HasDefaultValue(0);
+
         modelBuilder.Entity<PerfilConductor>()
             .HasOne(perfil => perfil.Usuario)
             .WithOne(usuario => usuario.PerfilConductor)

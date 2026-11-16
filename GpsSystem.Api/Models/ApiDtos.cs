@@ -60,8 +60,12 @@ public sealed record RestablecimientoContrasenaResponse(string Mensaje);
 /// <summary>Credenciales de acceso, rol y datos de perfil del usuario autenticado.</summary>
 public sealed record AuthResponse(string Token, string UsuarioId, string Email, string Rol, string Telefono, string Nombre);
 
-/// <summary>Datos de perfil del usuario autenticado.</summary>
-public sealed record PerfilUsuarioResponse(string Nombre, string Telefono);
+/// <summary>Datos de perfil y calificación del usuario autenticado.</summary>
+public sealed record PerfilUsuarioResponse(
+    string Nombre,
+    string Telefono,
+    double PromedioCalificacion,
+    int TotalCalificaciones);
 
 /// <summary>Datos que se pueden actualizar en el perfil del usuario autenticado.</summary>
 public sealed record ActualizarPerfilRequest
@@ -134,7 +138,19 @@ public sealed record ViajeResponse(
     string? Vehiculo,
     string? Placa,
     string? ConductorNombre,
-    string? ConductorTelefono);
+    string? ConductorTelefono,
+    int? Calificacion,
+    string? ComentarioCalificacion);
+
+/// <summary>Calificación de estrellas y comentario opcional de un viaje finalizado.</summary>
+public sealed record CalificarViajeRequest
+{
+    [Range(1, 5)]
+    public required int Estrellas { get; init; }
+
+    [StringLength(1000)]
+    public string? Comentario { get; init; }
+}
 
 /// <summary>PIN de cuatro dígitos entregado por el pasajero al conductor.</summary>
 public sealed record IniciarViajeRequest

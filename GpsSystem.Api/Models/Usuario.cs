@@ -14,6 +14,10 @@ public class Usuario : IdentityUser
 
     public string Telefono { get; set; } = string.Empty;
 
+    public double PromedioCalificacion { get; set; } = 5.0;
+
+    public int TotalCalificaciones { get; set; }
+
     public PerfilConductor? PerfilConductor { get; set; }
 }
 

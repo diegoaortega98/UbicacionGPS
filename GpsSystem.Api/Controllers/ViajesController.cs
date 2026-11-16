@@ -56,6 +56,11 @@ public class ViajesController(
     public async Task<IActionResult> Mios(CancellationToken cancellationToken) =>
         Ok(await viajeService.ObtenerPropiosAsync(UsuarioId(), RolUsuario(), cancellationToken));
 
+    [HttpGet("historial")]
+    [ProducesResponseType<IReadOnlyList<ViajeResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Historial(CancellationToken cancellationToken) =>
+        Ok(await viajeService.ObtenerHistorialAsync(UsuarioId(), cancellationToken));
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> Obtener(Guid id, CancellationToken cancellationToken)
     {
@@ -145,6 +150,18 @@ public class ViajesController(
         await NotificarViajeAsync(viaje, cancellationToken);
         return Ok(viaje);
     }
+
+    [HttpPost("{id:guid}/calificar")]
+    [Authorize(Roles = RolesUsuario.Pasajero)]
+    [ProducesResponseType<ViajeResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Calificar(
+        Guid id,
+        [FromBody] CalificarViajeRequest request,
+        CancellationToken cancellationToken) =>
+        Ok(await viajeService.CalificarAsync(id, UsuarioId(), request, cancellationToken));
 
     [HttpGet("ganancias")]
     [Authorize(Roles = RolesUsuario.Conductor)]

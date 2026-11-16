@@ -61,6 +61,8 @@ public sealed class RideFlowTests
         var profile = await profileResponse.Content.ReadFromJsonAsync<PerfilUsuarioResponse>();
         profile.Should().NotBeNull();
         profile!.Telefono.Should().Be(passengerAuth.Telefono);
+        profile.PromedioCalificacion.Should().Be(5.0);
+        profile.TotalCalificaciones.Should().Be(0);
 
         using var driverLogin = await client.PostAsJsonAsync("/api/auth/login", new
         {
@@ -84,6 +86,13 @@ public sealed class RideFlowTests
         var rideRequest = await requestRide.Content.ReadFromJsonAsync<SolicitudViajeResponse>();
         rideRequest.Should().NotBeNull();
         rideRequest!.Pin.Should().MatchRegex("^\\d{4}$");
+
+        using var prematureRating = await PostAuthorizedAsync(
+            client,
+            $"/api/viajes/{rideRequest.Id}/calificar",
+            passengerAuth.Token,
+            new { Estrellas = 5 });
+        prematureRating.StatusCode.Should().Be(HttpStatusCode.Conflict);
 
         using (var scope = factory.Services.CreateScope())
         {
@@ -165,6 +174,64 @@ public sealed class RideFlowTests
         var completedRide = await paymentReceived.Content.ReadFromJsonAsync<ViajeResponse>();
         completedRide.Should().NotBeNull();
         completedRide!.Estado.Should().Be(EstadosViaje.Finalizado);
+
+        using var invalidRating = await PostAuthorizedAsync(
+            client,
+            $"/api/viajes/{rideRequest.Id}/calificar",
+            passengerAuth.Token,
+            new { Estrellas = 6 });
+        invalidRating.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        using var rateRide = await PostAuthorizedAsync(
+            client,
+            $"/api/viajes/{rideRequest.Id}/calificar",
+            passengerAuth.Token,
+            new { Estrellas = 4, Comentario = "Buen viaje" });
+        rateRide.StatusCode.Should().Be(HttpStatusCode.OK);
+        var ratedRide = await rateRide.Content.ReadFromJsonAsync<ViajeResponse>();
+        ratedRide.Should().NotBeNull();
+        ratedRide!.Calificacion.Should().Be(4);
+        ratedRide.ComentarioCalificacion.Should().Be("Buen viaje");
+
+        using var driverRating = await PostAuthorizedAsync(
+            client,
+            $"/api/viajes/{rideRequest.Id}/calificar",
+            driverAuth.Token,
+            new { Estrellas = 5 });
+        driverRating.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        using var duplicateRating = await PostAuthorizedAsync(
+            client,
+            $"/api/viajes/{rideRequest.Id}/calificar",
+            passengerAuth.Token,
+            new { Estrellas = 5 });
+        duplicateRating.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        using var driverProfileResponse = await GetAuthorizedAsync(
+            client,
+            "/api/auth/perfil",
+            driverAuth.Token);
+        driverProfileResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var driverProfile = await driverProfileResponse.Content.ReadFromJsonAsync<PerfilUsuarioResponse>();
+        driverProfile.Should().NotBeNull();
+        driverProfile!.PromedioCalificacion.Should().Be(4.0);
+        driverProfile.TotalCalificaciones.Should().Be(1);
+
+        using var passengerHistoryResponse = await GetAuthorizedAsync(
+            client,
+            "/api/viajes/historial",
+            passengerAuth.Token);
+        passengerHistoryResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var passengerHistory = await passengerHistoryResponse.Content.ReadFromJsonAsync<List<ViajeResponse>>();
+        passengerHistory.Should().ContainSingle(trip => trip.Id == rideRequest.Id && trip.Calificacion == 4);
+
+        using var driverHistoryResponse = await GetAuthorizedAsync(
+            client,
+            "/api/viajes/historial",
+            driverAuth.Token);
+        driverHistoryResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var driverHistory = await driverHistoryResponse.Content.ReadFromJsonAsync<List<ViajeResponse>>();
+        driverHistory.Should().ContainSingle(trip => trip.Id == rideRequest.Id && trip.Calificacion == 4);
 
         using var earningsResponse = await GetAuthorizedAsync(
             client,
@@ -302,7 +369,7 @@ public sealed class RideFlowTests
         });
         update.StatusCode.Should().Be(HttpStatusCode.OK);
         var profile = await update.Content.ReadFromJsonAsync<PerfilUsuarioResponse>();
-        profile.Should().Be(new PerfilUsuarioResponse("Ana Ortega", "5557654321"));
+        profile.Should().Be(new PerfilUsuarioResponse("Ana Ortega", "5557654321", 5.0, 0));
 
         using var updatedLogin = await client.PostAsJsonAsync("/api/auth/login", new
         {

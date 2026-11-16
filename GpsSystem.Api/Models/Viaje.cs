@@ -41,6 +41,12 @@ public class Viaje
 
     public decimal ComisionPlataforma { get; set; }
 
+    [Range(1, 5)]
+    public int? Calificacion { get; set; }
+
+    [MaxLength(1000)]
+    public string? ComentarioCalificacion { get; set; }
+
     public DateTimeOffset FechaCreacion { get; set; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? FechaFinalizacion { get; set; }

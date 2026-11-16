@@ -236,6 +236,11 @@ namespace GpsSystem.Api.Data.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<double>("PromedioCalificacion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("double precision")
+                        .HasDefaultValue(5.0);
+
                     b.Property<string>("ResetCode")
                         .HasMaxLength(6)
                         .HasColumnType("character varying(6)");
@@ -255,6 +260,11 @@ namespace GpsSystem.Api.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.Property<int>("TotalCalificaciones")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("boolean");
@@ -280,6 +290,13 @@ namespace GpsSystem.Api.Data.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("Calificacion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ComentarioCalificacion")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<decimal>("ComisionPlataforma")
                         .HasColumnType("numeric");

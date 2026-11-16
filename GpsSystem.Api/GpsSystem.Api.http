@@ -103,6 +103,24 @@ Authorization: Bearer {{token}}
 
 ###
 
+### Historial (últimos 20 finalizados o cancelados)
+GET {{GpsSystem.Api_HostAddress}}/api/viajes/historial
+Authorization: Bearer {{token}}
+
+###
+
+### Calificar viaje finalizado (token de pasajero)
+POST {{GpsSystem.Api_HostAddress}}/api/viajes/{{viajeId}}/calificar
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "estrellas": 5,
+  "comentario": "Buen servicio"
+}
+
+###
+
 ### Obtener un viaje propio
 GET {{GpsSystem.Api_HostAddress}}/api/viajes/{{viajeId}}
 Authorization: Bearer {{token}}

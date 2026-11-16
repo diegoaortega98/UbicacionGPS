@@ -29,5 +29,13 @@ public interface IViajeService
 
     Task<IReadOnlyList<ViajeResponse>> ObtenerPropiosAsync(string usuarioId, string rol, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<ViajeResponse>> ObtenerHistorialAsync(string usuarioId, CancellationToken cancellationToken);
+
     Task<ViajeResponse?> ObtenerAsync(Guid viajeId, string usuarioId, CancellationToken cancellationToken);
+
+    Task<ViajeResponse> CalificarAsync(
+        Guid viajeId,
+        string pasajeroId,
+        CalificarViajeRequest request,
+        CancellationToken cancellationToken);
 }

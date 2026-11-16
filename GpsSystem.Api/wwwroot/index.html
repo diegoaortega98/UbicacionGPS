@@ -63,6 +63,7 @@
                 </div>
             </div>
             <button id="enable-notifications" class="secondary notification-button" type="button">Activar notificaciones</button>
+            <button id="open-trip-history" class="secondary notification-button" type="button">Historial de viajes</button>
 
             <section id="passenger-panel" hidden>
                 <h3>Solicitar un viaje</h3>
@@ -193,6 +194,7 @@
                 <h2 id="profile-title">Mi Perfil</h2>
                 <button id="close-profile" class="secondary compact" type="button" aria-label="Cerrar perfil">×</button>
             </header>
+            <p id="profile-rating-summary" class="profile-rating-summary" hidden></p>
             <form id="profile-form">
                 <label>Nombre<input name="nombre" type="text" autocomplete="name" maxlength="100" required></label>
                 <label>Teléfono<input name="telefono" type="tel" autocomplete="tel" maxlength="32" required></label>
@@ -207,6 +209,44 @@
                 <div class="profile-modal-actions">
                     <button class="primary" type="submit">Guardar cambios</button>
                     <button id="cancel-profile" class="secondary" type="button">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section id="trip-history-modal" class="modal-backdrop" hidden>
+        <div class="history-modal card" role="dialog" aria-modal="true" aria-labelledby="trip-history-title">
+            <header class="profile-modal-header">
+                <h2 id="trip-history-title">Historial de viajes</h2>
+                <button id="close-trip-history" class="secondary compact" type="button" aria-label="Cerrar historial">×</button>
+            </header>
+            <p id="trip-history-message" class="message" aria-live="polite"></p>
+            <div id="trip-history-list" class="trip-history-list"></div>
+        </div>
+    </section>
+
+    <section id="trip-rating-modal" class="modal-backdrop" hidden>
+        <div class="rating-modal card" role="dialog" aria-modal="true" aria-labelledby="trip-rating-title">
+            <header class="profile-modal-header">
+                <h2 id="trip-rating-title">Califica a tu conductor</h2>
+                <button id="close-trip-rating" class="secondary compact" type="button" aria-label="Cerrar calificación">×</button>
+            </header>
+            <p id="trip-rating-driver" class="hint"></p>
+            <form id="trip-rating-form">
+                <div id="trip-rating-stars" class="trip-rating-stars" role="group" aria-label="Calificación de 1 a 5 estrellas">
+                    <button class="rating-star" type="button" data-rating="1" aria-pressed="false" aria-label="1 estrella">★</button>
+                    <button class="rating-star" type="button" data-rating="2" aria-pressed="false" aria-label="2 estrellas">★</button>
+                    <button class="rating-star" type="button" data-rating="3" aria-pressed="false" aria-label="3 estrellas">★</button>
+                    <button class="rating-star" type="button" data-rating="4" aria-pressed="false" aria-label="4 estrellas">★</button>
+                    <button class="rating-star" type="button" data-rating="5" aria-pressed="false" aria-label="5 estrellas">★</button>
+                </div>
+                <label>Comentario (opcional)
+                    <textarea name="comentario" maxlength="1000" rows="3" placeholder="Comparte tu experiencia"></textarea>
+                </label>
+                <p id="trip-rating-message" class="message" aria-live="polite"></p>
+                <div class="profile-modal-actions">
+                    <button id="submit-trip-rating" class="primary" type="submit" disabled>Enviar calificación</button>
+                    <button id="skip-trip-rating" class="secondary" type="button">Ahora no</button>
                 </div>
             </form>
         </div>

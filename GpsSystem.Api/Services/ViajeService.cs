@@ -312,6 +312,34 @@ public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenServ
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ViajeResponse>> ObtenerHistorialAsync(
+        string usuarioId,
+        CancellationToken cancellationToken)
+    {
+        var historial = dbContext.Viajes.AsNoTracking()
+            .Include(viaje => viaje.Pasajero)
+            .Include(viaje => viaje.Conductor)
+                .ThenInclude(conductor => conductor!.PerfilConductor)
+            .Where(viaje => (viaje.PasajeroId == usuarioId || viaje.ConductorId == usuarioId)
+                && (viaje.Estado == EstadosViaje.Finalizado || viaje.Estado == EstadosViaje.Cancelado));
+
+        if (dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            var viajes = await historial.ToListAsync(cancellationToken);
+            return viajes
+                .OrderByDescending(viaje => viaje.FechaFinalizacion ?? viaje.FechaCreacion)
+                .Take(20)
+                .Select(Mapear)
+                .ToArray();
+        }
+
+        return await historial
+            .OrderByDescending(viaje => viaje.FechaFinalizacion ?? viaje.FechaCreacion)
+            .Take(20)
+            .Select(viaje => Mapear(viaje))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<ViajeResponse?> ObtenerAsync(Guid viajeId, string usuarioId, CancellationToken cancellationToken)
     {
         var viaje = await dbContext.Viajes.AsNoTracking()
@@ -323,6 +351,72 @@ public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenServ
             .Select(item => Mapear(item))
             .SingleOrDefaultAsync(cancellationToken);
         return viaje;
+    }
+
+    public async Task<ViajeResponse> CalificarAsync(
+        Guid viajeId,
+        string pasajeroId,
+        CalificarViajeRequest request,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var viaje = await dbContext.Viajes.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == viajeId, cancellationToken)
+            ?? throw new KeyNotFoundException("No se encontró el viaje.");
+
+        if (viaje.PasajeroId != pasajeroId)
+        {
+            throw new UnauthorizedAccessException("Solo el pasajero del viaje puede calificarlo.");
+        }
+
+        if (viaje.Estado != EstadosViaje.Finalizado)
+        {
+            throw new InvalidOperationException("Solo se pueden calificar viajes finalizados.");
+        }
+
+        if (viaje.Calificacion.HasValue)
+        {
+            throw new InvalidOperationException("Este viaje ya fue calificado.");
+        }
+
+        if (string.IsNullOrWhiteSpace(viaje.ConductorId))
+        {
+            throw new InvalidOperationException("No se encontró un conductor para este viaje.");
+        }
+
+        var comentario = string.IsNullOrWhiteSpace(request.Comentario)
+            ? null
+            : request.Comentario.Trim();
+        var affectedTrips = await dbContext.Viajes
+            .Where(item => item.Id == viajeId
+                && item.PasajeroId == pasajeroId
+                && item.Estado == EstadosViaje.Finalizado
+                && item.Calificacion == null)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(item => item.Calificacion, request.Estrellas)
+                .SetProperty(item => item.ComentarioCalificacion, comentario), cancellationToken);
+
+        if (affectedTrips == 0)
+        {
+            throw new InvalidOperationException("Este viaje ya fue calificado o dejó de estar finalizado.");
+        }
+
+        var affectedDrivers = await dbContext.Users
+            .Where(usuario => usuario.Id == viaje.ConductorId && usuario.Rol == RolesUsuario.Conductor)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(usuario => usuario.PromedioCalificacion,
+                    usuario => (usuario.PromedioCalificacion * usuario.TotalCalificaciones + request.Estrellas)
+                        / (usuario.TotalCalificaciones + 1))
+                .SetProperty(usuario => usuario.TotalCalificaciones,
+                    usuario => usuario.TotalCalificaciones + 1), cancellationToken);
+
+        if (affectedDrivers == 0)
+        {
+            throw new KeyNotFoundException("No se encontró el conductor asociado al viaje.");
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return await ObtenerRespuestaAsync(viajeId, cancellationToken);
     }
 
     private async Task<ViajeResponse> ObtenerRespuestaAsync(Guid viajeId, CancellationToken cancellationToken) =>
@@ -348,7 +442,9 @@ public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenServ
                 : string.IsNullOrWhiteSpace(viaje.Conductor.Nombre)
                     ? viaje.Conductor.Email ?? "Conductor"
                     : viaje.Conductor.Nombre,
-            viaje.Conductor == null ? null : viaje.Conductor.Telefono);
+            viaje.Conductor == null ? null : viaje.Conductor.Telefono,
+            viaje.Calificacion,
+            viaje.ComentarioCalificacion);
 
     private static decimal CalcularTarifa(SolicitarViajeRequest request)
     {

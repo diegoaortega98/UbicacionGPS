@@ -49,6 +49,8 @@ let driverLocationWatchId = null;
 let driverMarker = null;
 let finalizationSummary = null;
 let sessionExpirationHandled = false;
+let tripForRating = null;
+let selectedTripRating = 0;
 const latestDriverLocations = new Map();
 
 function showContactWidget(open = true) {
@@ -133,6 +135,138 @@ function closeProfileModal() {
     showMessage(document.getElementById('profile-message'));
 }
 
+function updateProfileRating(account) {
+    const summary = document.getElementById('profile-rating-summary');
+    summary.hidden = account?.rol !== 'Conductor';
+    summary.textContent = `⭐ ${Number(account?.promedioCalificacion ?? 5).toFixed(1)} / 5.0 · ${Number(account?.totalCalificaciones ?? 0)} viajes calificados`;
+}
+
+function updateTripRatingStars() {
+    document.querySelectorAll('#trip-rating-stars .rating-star').forEach((button) => {
+        const selected = Number(button.dataset.rating) <= selectedTripRating;
+        button.classList.toggle('is-selected', selected);
+        button.setAttribute('aria-pressed', String(Number(button.dataset.rating) === selectedTripRating));
+    });
+    document.getElementById('submit-trip-rating').disabled = selectedTripRating === 0;
+}
+
+function openTripRating(trip, ignoreDismissal = false) {
+    if (trip.estado !== 'Finalizado' || trip.calificacion != null
+        || JSON.parse(localStorage.getItem('gps-user'))?.rol !== 'Pasajero') return false;
+
+    const dismissedKey = `gps-rating-dismissed-${trip.id}`;
+    if (!ignoreDismissal && sessionStorage.getItem(dismissedKey) === 'true') return false;
+    if (!document.getElementById('trip-rating-modal').hidden && tripForRating?.id === trip.id) return true;
+
+    tripForRating = trip;
+    selectedTripRating = 0;
+    document.getElementById('trip-rating-driver').textContent =
+        trip.conductorNombre ? `Conductor: ${trip.conductorNombre}` : '¿Cómo fue tu viaje?';
+    document.querySelector('#trip-rating-form [name="comentario"]').value = '';
+    showMessage(document.getElementById('trip-rating-message'));
+    updateTripRatingStars();
+    document.getElementById('trip-rating-modal').hidden = false;
+    return true;
+}
+
+function closeTripRating(dismiss = true) {
+    if (dismiss && tripForRating) {
+        sessionStorage.setItem(`gps-rating-dismissed-${tripForRating.id}`, 'true');
+    }
+    document.getElementById('trip-rating-modal').hidden = true;
+    tripForRating = null;
+}
+
+function maybePromptTripRating(trip) {
+    openTripRating(trip);
+}
+
+async function loadTripHistory() {
+    const message = document.getElementById('trip-history-message');
+    const list = document.getElementById('trip-history-list');
+    list.replaceChildren();
+    showMessage(message, 'Cargando historial...');
+    try {
+        const trips = await api('/api/viajes/historial');
+        showMessage(message, trips.length ? '' : 'Todavía no tienes viajes finalizados o cancelados.');
+        const account = JSON.parse(localStorage.getItem('gps-user'));
+        for (const trip of trips) {
+            const item = document.createElement('article');
+            item.className = 'trip-history-item';
+
+            const heading = document.createElement('strong');
+            heading.textContent = `${trip.estado} · ${new Date(trip.fechaCreacion).toLocaleString('es-CO')}`;
+            const route = document.createElement('p');
+            route.textContent = `Origen: ${Number(trip.origenLat).toFixed(5)}, ${Number(trip.origenLng).toFixed(5)} → Destino: ${Number(trip.destinoLat).toFixed(5)}, ${Number(trip.destinoLng).toFixed(5)}`;
+            const price = document.createElement('p');
+            price.textContent = `Precio: ${formatCurrency(trip.precio)}`;
+            item.append(heading, route, price);
+
+            if (trip.calificacion != null) {
+                const rating = document.createElement('p');
+                rating.className = 'trip-history-rating';
+                rating.textContent = `Calificación: ${'⭐'.repeat(trip.calificacion)} ${trip.calificacion}/5${trip.comentarioCalificacion ? ` · ${trip.comentarioCalificacion}` : ''}`;
+                item.append(rating);
+            } else if (account?.rol === 'Pasajero' && trip.estado === 'Finalizado') {
+                const rateButton = document.createElement('button');
+                rateButton.className = 'secondary';
+                rateButton.type = 'button';
+                rateButton.textContent = 'Calificar conductor';
+                rateButton.addEventListener('click', () => {
+                    document.getElementById('trip-history-modal').hidden = true;
+                    openTripRating(trip, true);
+                });
+                item.append(rateButton);
+            }
+            list.append(item);
+        }
+    } catch (error) {
+        showMessage(message, error.message);
+    }
+}
+
+document.getElementById('open-trip-history').addEventListener('click', async () => {
+    document.getElementById('trip-history-modal').hidden = false;
+    await loadTripHistory();
+});
+document.getElementById('close-trip-history').addEventListener('click', () => {
+    document.getElementById('trip-history-modal').hidden = true;
+});
+
+document.querySelectorAll('#trip-rating-stars .rating-star').forEach((button) => {
+    button.addEventListener('click', () => {
+        selectedTripRating = Number(button.dataset.rating);
+        updateTripRatingStars();
+    });
+});
+document.getElementById('close-trip-rating').addEventListener('click', () => closeTripRating());
+document.getElementById('skip-trip-rating').addEventListener('click', () => closeTripRating());
+document.getElementById('trip-rating-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!tripForRating || selectedTripRating < 1 || selectedTripRating > 5) return;
+
+    const submitButton = document.getElementById('submit-trip-rating');
+    const trip = tripForRating;
+    const comment = document.querySelector('#trip-rating-form [name="comentario"]').value.trim();
+    submitButton.disabled = true;
+    showMessage(document.getElementById('trip-rating-message'));
+    try {
+        const ratedTrip = await api(`/api/viajes/${trip.id}/calificar`, {
+            method: 'POST',
+            body: JSON.stringify({ estrellas: selectedTripRating, comentario: comment || null })
+        });
+        sessionStorage.removeItem(`gps-rating-dismissed-${trip.id}`);
+        if (activeTrip?.id === trip.id) activeTrip = { ...activeTrip, ...ratedTrip };
+        closeTripRating(false);
+        showMessage(appMessage, 'Gracias por calificar a tu conductor.');
+        if (!document.getElementById('trip-history-modal').hidden) await loadTripHistory();
+    } catch (error) {
+        showMessage(document.getElementById('trip-rating-message'), error.message);
+    } finally {
+        submitButton.disabled = selectedTripRating === 0;
+    }
+});
+
 document.getElementById('open-profile').addEventListener('click', () => {
     const account = JSON.parse(localStorage.getItem('gps-user'));
     const form = document.getElementById('profile-form');
@@ -143,6 +277,7 @@ document.getElementById('open-profile').addEventListener('click', () => {
     form.elements.namedItem('telefono').value = account?.telefono || '';
     form.elements.namedItem('passwordActual').value = '';
     form.elements.namedItem('passwordNueva').value = '';
+    updateProfileRating(account);
     document.getElementById('profile-modal').hidden = false;
     form.elements.namedItem('nombre').focus();
 });
@@ -188,6 +323,8 @@ document.getElementById('profile-form').addEventListener('submit', async (event)
         const account = JSON.parse(localStorage.getItem('gps-user'));
         account.nombre = profile.nombre;
         account.telefono = profile.telefono;
+        account.promedioCalificacion = profile.promedioCalificacion;
+        account.totalCalificaciones = profile.totalCalificaciones;
         localStorage.setItem('gps-user', JSON.stringify(account));
         updateWelcome(account);
         closeProfileModal();
@@ -686,6 +823,8 @@ async function showAuthenticatedUi() {
         const profile = await api('/api/auth/perfil');
         account.telefono = profile.telefono;
         account.nombre = profile.nombre;
+        account.promedioCalificacion = profile.promedioCalificacion;
+        account.totalCalificaciones = profile.totalCalificaciones;
         localStorage.setItem('gps-user', JSON.stringify(account));
         if (!profile.telefono?.trim()) {
             window.alert('Tu cuenta no tiene teléfono registrado. Actualiza tu perfil para que puedan contactarte por celular.');
@@ -949,10 +1088,7 @@ function addAvailableRide(request) {
     const passengerName = document.createElement('span');
     passengerName.className = 'ride-passenger-name';
     passengerName.textContent = request.pasajeroNombre || request.pasajeroEmail || 'Pasajero';
-    const rating = document.createElement('span');
-    rating.className = 'ride-rating';
-    rating.textContent = '★ 4.8 · Calificación';
-    passengerDetails.append(passengerName, rating);
+    passengerDetails.append(passengerName);
     passenger.append(avatar, passengerDetails);
 
     const price = document.createElement('strong');
@@ -1012,6 +1148,7 @@ function showTrip(trip) {
     activeTrip = trip;
     showRoute(trip);
     const account = JSON.parse(localStorage.getItem('gps-user'));
+    maybePromptTripRating(trip);
     syncDriverLocationTracking();
     if (account.rol === 'Pasajero') {
         const panel = document.getElementById('passenger-trip');
