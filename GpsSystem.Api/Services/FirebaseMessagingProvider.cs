@@ -13,6 +13,23 @@ public sealed class FirebaseMessagingProvider
         IWebHostEnvironment environment,
         ILogger<FirebaseMessagingProvider> logger)
     {
+        try
+        {
+            Messaging = Initialize(configuration, environment, logger);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                "Firebase no disponible; la aplicación continuará sin notificaciones. Error: {ErrorType}",
+                exception.GetType().Name);
+        }
+    }
+
+    private static FirebaseMessaging? Initialize(
+        IConfiguration configuration,
+        IWebHostEnvironment environment,
+        ILogger<FirebaseMessagingProvider> logger)
+    {
         var serviceAccountJson = Environment.GetEnvironmentVariable("FIREBASE_CREDENTIALS_JSON");
         if (string.IsNullOrWhiteSpace(serviceAccountJson))
         {
@@ -33,6 +50,16 @@ public sealed class FirebaseMessagingProvider
             {
                 serviceAccountPath = defaultPath;
             }
+            else
+            {
+                var credentialFiles = Directory.GetFiles(
+                    Path.GetDirectoryName(defaultPath)!,
+                    "firebase-adminsdk*.json");
+                if (credentialFiles.Length == 1)
+                {
+                    serviceAccountPath = credentialFiles[0];
+                }
+            }
         }
 
         GoogleCredential? credential = null;
@@ -44,7 +71,9 @@ public sealed class FirebaseMessagingProvider
         {
             if (!File.Exists(serviceAccountPath))
             {
-                throw new FileNotFoundException("No se encontró el archivo de credenciales de Firebase configurado.", serviceAccountPath);
+                logger.LogWarning(
+                    "Firebase Cloud Messaging está desactivado: no se encontró el archivo de credenciales configurado.");
+                return null;
             }
 
             credential = CredentialFactory.FromFile<ServiceAccountCredential>(serviceAccountPath).ToGoogleCredential();
@@ -54,7 +83,7 @@ public sealed class FirebaseMessagingProvider
         {
             logger.LogWarning(
                 "Firebase Cloud Messaging está desactivado: configura FIREBASE_CREDENTIALS_JSON o coloca firebase-adminsdk.json en la raíz del repositorio.");
-            return;
+            return null;
         }
 
         var projectId = configuration["Firebase:ProjectId"];
@@ -67,7 +96,8 @@ public sealed class FirebaseMessagingProvider
             Credential = credential,
             ProjectId = string.IsNullOrWhiteSpace(projectId) ? null : projectId
         });
-        Messaging = FirebaseMessaging.DefaultInstance;
+        var messaging = FirebaseMessaging.DefaultInstance;
         logger.LogInformation("Firebase Cloud Messaging quedó inicializado.");
+        return messaging;
     }
 }
