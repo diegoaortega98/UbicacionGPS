@@ -106,7 +106,8 @@
             font-size: 19px;
         }
 
-        #pending-drivers-list {
+        #pending-drivers-list,
+        #expired-drivers-list {
             display: grid;
             gap: 12px;
         }
@@ -180,6 +181,15 @@
 
         #pending-drivers-status.success {
             color: #285d3b;
+        }
+
+        #expired-drivers-status.error {
+            color: #9c2c26;
+        }
+
+        #expired-drivers-notice {
+            color: #9c2c26;
+            font-weight: 700;
         }
 
         .promo-management {
@@ -298,10 +308,6 @@
                     <output id="total-viajes">—</output>
                 </article>
                 <article class="metric-card">
-                    <h2>Comisiones totales</h2>
-                    <output id="comisiones-totales">—</output>
-                </article>
-                <article class="metric-card">
                     <h2>Viajes finalizados hoy</h2>
                     <output id="viajes-hoy">—</output>
                 </article>
@@ -313,6 +319,27 @@
                     <h2>Comisiones generadas hoy</h2>
                     <output id="recaudado-hoy">—</output>
                 </article>
+            </section>
+            <section class="promo-management" aria-labelledby="admin-finances-title">
+                <h2 id="admin-finances-title">Finanzas</h2>
+                <p>Comisiones Recibidas (Transferencias)</p>
+                <output id="comisiones-recibidas">—</output>
+                <p>Comisiones por Cobrar (Efectivo)</p>
+                <output id="comisiones-por-cobrar">—</output>
+                <button id="admin-withdraw-earnings" type="button" hidden>Retirar Ganancias</button>
+                <p id="admin-withdraw-status" role="status" aria-live="polite"></p>
+                <h3>Conductores con Deuda</h3>
+                <p id="drivers-with-debt-status" role="status" aria-live="polite">Cargando conductores con deuda...</p>
+                <div id="drivers-with-debt-list"></div>
+            </section>
+            <section class="promo-management" aria-labelledby="expired-drivers-title">
+                <div class="pending-drivers-heading">
+                    <h2 id="expired-drivers-title">Conductores con documentos vencidos</h2>
+                    <button id="refresh-expired-drivers" type="button">Actualizar lista</button>
+                </div>
+                <p id="expired-drivers-notice" role="alert" hidden></p>
+                <p id="expired-drivers-status" role="status" aria-live="polite">Cargando conductores vencidos...</p>
+                <div id="expired-drivers-list"></div>
             </section>
             <section class="promo-management" aria-labelledby="promo-title">
                 <h2 id="promo-title">Crear código de descuento</h2>

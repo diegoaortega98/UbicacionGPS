@@ -192,6 +192,15 @@ public class ViajesController(
     public async Task<ActionResult<GananciasResponse>> Ganancias(CancellationToken cancellationToken) =>
         Ok(new GananciasResponse(await viajeService.ObtenerGananciasAsync(UsuarioId(), cancellationToken)));
 
+    [HttpGet("finanzas-hoy")]
+    [Authorize(Roles = RolesUsuario.Conductor)]
+    [ProducesResponseType<EstadisticasFinancierasConductorResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<EstadisticasFinancierasConductorResponse>> FinanzasHoy(
+        CancellationToken cancellationToken) =>
+        Ok(await viajeService.ObtenerEstadisticasFinancierasConductorHoyAsync(
+            UsuarioId(),
+            cancellationToken));
+
     [HttpGet("historial-conductor")]
     [Authorize(Roles = RolesUsuario.Conductor)]
     [ProducesResponseType<IReadOnlyList<HistorialViajeConductorResponse>>(StatusCodes.Status200OK)]

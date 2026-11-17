@@ -30,6 +30,8 @@ public sealed class AdminControllerTests
             var admin = await CreateUserAsync(userManager, RolesUsuario.Admin);
             var passenger = await CreateUserAsync(userManager, RolesUsuario.Pasajero);
             var driver = await CreateUserAsync(userManager, RolesUsuario.Conductor);
+            driver.SaldoPendiente = 7.5m;
+            await userManager.UpdateAsync(driver);
             adminToken = tokenService.CrearToken(admin);
             passengerToken = tokenService.CrearToken(passenger);
 
@@ -42,6 +44,7 @@ public sealed class AdminControllerTests
                     Estado = EstadosViaje.Finalizado,
                     Pin = "hash-1",
                     ComisionPlataforma = 12.5m,
+                    MetodoPago = MetodosPago.Transferencia,
                     FechaCreacion = now.AddHours(-1),
                     FechaFinalizacion = now
                 },
@@ -52,6 +55,7 @@ public sealed class AdminControllerTests
                     Estado = EstadosViaje.Finalizado,
                     Pin = "hash-2",
                     ComisionPlataforma = 7.5m,
+                    MetodoPago = MetodosPago.Efectivo,
                     FechaCreacion = now.AddDays(-1),
                     FechaFinalizacion = now.AddDays(-1)
                 },
@@ -86,7 +90,7 @@ public sealed class AdminControllerTests
             adminToken);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var statistics = await response.Content.ReadFromJsonAsync<AdminEstadisticasResponse>();
-        statistics.Should().Be(new AdminEstadisticasResponse(2, 20m, 1, 1, 12.5m));
+        statistics.Should().Be(new AdminEstadisticasResponse(2, 20m, 12.5m, 7.5m, 1, 1, 12.5m));
     }
 
     [Fact]

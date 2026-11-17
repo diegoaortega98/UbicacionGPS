@@ -1,5 +1,23 @@
 let deferredPrompt = null;
 const map = L.map('map').setView([10.3910, -75.4794], 13);
+const satelliteLayer = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community', maxZoom: 20 }
+);
+const streetsLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+});
+const darkLayer = L.tileLayer(
+    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    { attribution: '&copy; OpenStreetMap contributors &copy; CARTO', subdomains: 'abcd', maxZoom: 20 }
+);
+satelliteLayer.addTo(map);
+L.control.layers({
+    'Satélite': satelliteLayer,
+    Calles: streetsLayer,
+    Oscuro: darkLayer
+}, null, { position: 'topright' }).addTo(map);
 const telemetryMarkerIcon = L.divIcon({
     className: 'telemetry-map-marker',
     iconSize: [20, 20],
@@ -70,17 +88,20 @@ let call = null;
 let localStream = null;
 let remoteDescriptionSet = false;
 let queuedCandidates = [];
+let pendingCallOffer = null;
 let joinedTripId = null;
 let fcmMessaging = null;
 let fcmOnMessageRegistered = false;
 let driverConnected = false;
-let driverLocationWatchId = null;
+let tripLocationWatchId = null;
 let driverMarker = null;
+let passengerMarker = null;
 let finalizationSummary = null;
 let sessionExpirationHandled = false;
 let tripForRating = null;
 let selectedTripRating = 0;
 const latestDriverLocations = new Map();
+const markerAnimationFrames = new WeakMap();
 
 function showContactWidget(open = true) {
     const widget = document.getElementById('contact-widget');
@@ -366,6 +387,9 @@ document.getElementById('open-driver-wallet').addEventListener('click', async ()
 document.getElementById('close-driver-wallet').addEventListener('click', () => {
     document.getElementById('driver-wallet-modal').hidden = true;
 });
+document.getElementById('settle-pending-balance').addEventListener('click', () => {
+    window.alert('Para liquidar tu saldo, transfiere a Nequi 300-123-4567 y envía el comprobante');
+});
 document.getElementById('driver-wallet-modal').addEventListener('click', (event) => {
     if (event.target === event.currentTarget) event.currentTarget.hidden = true;
 });
@@ -405,6 +429,7 @@ document.querySelectorAll('.upload-driver-document').forEach((button) => {
             const account = JSON.parse(localStorage.getItem('gps-user'));
             if (!account) throw new Error('No se encontró la sesión del conductor.');
             account.estadoVerificacion = verification.estadoVerificacion;
+            account.fechaVencimientoDocumentos = verification.fechaVencimientoDocumentos;
             account.motivoRechazo = verification.motivoRechazo;
             account.tieneLicencia = verification.tieneLicencia;
             account.tieneSoat = verification.tieneSoat;
@@ -433,6 +458,7 @@ document.getElementById('submit-driver-verification').addEventListener('click', 
         const account = JSON.parse(localStorage.getItem('gps-user'));
         if (!account) throw new Error('No se encontró la sesión del conductor.');
         account.estadoVerificacion = verification.estadoVerificacion;
+        account.fechaVencimientoDocumentos = verification.fechaVencimientoDocumentos;
         account.motivoRechazo = verification.motivoRechazo;
         account.tieneLicencia = verification.tieneLicencia;
         account.tieneSoat = verification.tieneSoat;
@@ -446,10 +472,6 @@ document.getElementById('submit-driver-verification').addEventListener('click', 
         button.disabled = false;
     }
 });
-document.getElementById('request-withdrawal').addEventListener('click', () => {
-    window.alert('Retiro solicitado. Pronto nos pondremos en contacto.');
-});
-
 document.querySelectorAll('#trip-rating-stars .rating-star').forEach((button) => {
     button.addEventListener('click', () => {
         selectedTripRating = Number(button.dataset.rating);
@@ -610,11 +632,6 @@ for (const key of ['gps-token', 'gps-user']) {
     }
     sessionStorage.removeItem(key);
 }
-
-L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
-    maxZoom: 20
-}).addTo(map);
 
 function boundsToViewbox(bounds) {
     if (!bounds) return null;
@@ -1291,7 +1308,9 @@ document.getElementById('reset-password-form').addEventListener('submit', async 
         const loginForm = document.getElementById('login-form');
         loginForm.elements.namedItem('email').value = values.email;
         loginForm.elements.namedItem('password').value = '';
-        form.reset();
+        if (form) {
+            form.reset();
+        }
         closeResetPasswordModal();
         showMessage(authMessage, 'Contraseña restablecida. Inicia sesión con tu nueva contraseña.');
     } catch (error) {
@@ -1336,20 +1355,33 @@ function updateWelcome(account) {
         `${role} · ${account.nombre?.trim() || account.email}`;
 }
 
+function puedeConducir(account) {
+    if (account?.rol !== 'Conductor' || account.estadoVerificacion !== 'Aprobado'
+        || !account.fechaVencimientoDocumentos) return false;
+    const expiry = new Date(account.fechaVencimientoDocumentos);
+    if (!Number.isFinite(expiry.getTime())) return false;
+    return expiry.toISOString().slice(0, 10) >= new Date().toISOString().slice(0, 10);
+}
+
 function actualizarInterfazVerificacionConductor(account) {
     const esConductor = account?.rol === 'Conductor';
     const estado = account?.estadoVerificacion || 'Pendiente';
+    const puedeTrabajar = puedeConducir(account);
+    const estadoVisible = estado === 'Aprobado' && !puedeTrabajar ? 'Vencido' : estado;
     const banner = document.getElementById('driver-verification-banner');
-    banner.hidden = !esConductor || estado === 'Aprobado';
+    banner.hidden = !esConductor || estadoVisible === 'Aprobado';
     const motivo = document.getElementById('driver-verification-reason');
-    motivo.hidden = estado !== 'Rechazado' || !account?.motivoRechazo;
+    motivo.hidden = estadoVisible !== 'Rechazado' || !account?.motivoRechazo;
     motivo.textContent = motivo.hidden ? '' : `Motivo: ${account.motivoRechazo}`;
-    document.getElementById('open-driver-documents').hidden = !esConductor;
+    document.getElementById('open-driver-documents').hidden =
+        !esConductor || estadoVisible === 'Aprobado';
 
     document.getElementById('driver-documents-verification-status').textContent =
-        `Estado de verificación: ${estado}`;
+        `Estado de verificación: ${estadoVisible}${account?.fechaVencimientoDocumentos
+            ? ` · Vencimiento: ${new Date(account.fechaVencimientoDocumentos).toLocaleDateString('es-CO')}`
+            : ''}`;
     const rejectionReason = document.getElementById('driver-documents-rejection-reason');
-    rejectionReason.hidden = estado !== 'Rechazado' || !account?.motivoRechazo;
+    rejectionReason.hidden = estadoVisible !== 'Rechazado' || !account?.motivoRechazo;
     rejectionReason.textContent = rejectionReason.hidden
         ? ''
         : `Motivo del rechazo: ${account.motivoRechazo}`;
@@ -1359,6 +1391,11 @@ function actualizarInterfazVerificacionConductor(account) {
         account?.tieneSoat ? 'Documento cargado' : 'Aún no subido';
     document.getElementById('registration-document-status').textContent =
         account?.tieneTarjetaPropiedad ? 'Documento cargado' : 'Aún no subido';
+    const availabilityButton = document.getElementById('driver-availability');
+    availabilityButton.disabled = (!puedeTrabajar && !driverConnected) || Boolean(activeTrip);
+    availabilityButton.textContent = estadoVisible === 'Vencido' && !driverConnected
+        ? 'Documentos vencidos'
+        : driverConnected ? 'Desconectarse' : 'Conectarse';
 }
 
 async function showAuthenticatedUi() {
@@ -1378,6 +1415,7 @@ async function showAuthenticatedUi() {
         account.latTrabajo = profile.latTrabajo;
         account.lngTrabajo = profile.lngTrabajo;
         account.estadoVerificacion = profile.estadoVerificacion;
+        account.fechaVencimientoDocumentos = profile.fechaVencimientoDocumentos;
         account.motivoRechazo = profile.motivoRechazo;
         account.tieneLicencia = profile.tieneLicencia;
         account.tieneSoat = profile.tieneSoat;
@@ -1405,7 +1443,8 @@ async function showAuthenticatedUi() {
         await connectHubs();
         await restoreTrips(account);
         if (account.rol === 'Conductor') {
-            const shouldConnect = localStorage.getItem('gps-driver-connected') === 'true'
+            const shouldConnect = puedeConducir(account)
+                && localStorage.getItem('gps-driver-connected') === 'true'
                 && !activeTrip;
             await setDriverAvailability(shouldConnect);
             await cargarBilletera();
@@ -1547,19 +1586,25 @@ async function connectHubs() {
                 : 'El viaje fue cancelado.');
         }
     });
-    viajes.on('UbicacionConductor', (location) => {
+    viajes.on('UbicacionParticipante', (location) => {
         if (activeTrip?.id !== location.viajeId) return;
-        updateDriverMarker({
-            dispositivoId: location.conductorId,
-            latitud: location.latitud,
-            longitud: location.longitud
-        });
-        updatePassengerEta(location);
+        if (location.rol === 'Conductor') {
+            const driverLocation = {
+                dispositivoId: location.usuarioId,
+                latitud: location.latitud,
+                longitud: location.longitud
+            };
+            updateDriverMarker(driverLocation);
+            updatePassengerEta(driverLocation);
+        } else {
+            updatePassengerMarker(location);
+        }
     });
     chat.on('RecibirMensaje', (message) => renderMessage(message));
     calls.on('OfertaLlamada', receiveOffer);
     calls.on('RespuestaLlamada', receiveAnswer);
     calls.on('CandidatoIce', receiveCandidate);
+    calls.on('LlamadaRechazada', () => endCall('Llamada rechazada'));
 
     [calls, chat, viajes].forEach((hub) => {
         hub.onreconnecting(() => { status.textContent = 'Reconectando...'; });
@@ -1630,13 +1675,21 @@ async function loadDriverEarnings() {
 }
 
 async function cargarBilletera() {
-    const [earnings, history] = await Promise.all([
+    const [earnings, history, today] = await Promise.all([
         api('/api/viajes/ganancias'),
-        api('/api/viajes/historial-conductor')
+        api('/api/viajes/historial-conductor'),
+        api('/api/viajes/finanzas-hoy')
     ]);
     const formattedEarnings = formatCurrency(earnings.gananciasAcumuladas);
     document.getElementById('driver-earnings-amount').textContent = formattedEarnings;
-    document.getElementById('wallet-total').textContent = formattedEarnings;
+    document.getElementById('wallet-collected-today').textContent =
+        formatCurrency(today.totalRecaudado);
+    document.getElementById('wallet-net-today').textContent =
+        formatCurrency(today.gananciaNetaHoy);
+    document.getElementById('wallet-pending-balance').textContent =
+        formatCurrency(today.saldoPendiente);
+    document.getElementById('settle-pending-balance').hidden =
+        Number(today.saldoPendiente) <= 0;
 
     const rows = document.getElementById('wallet-trip-list');
     rows.replaceChildren();
@@ -1645,7 +1698,6 @@ async function cargarBilletera() {
         const values = [
             new Date(trip.fecha).toLocaleString('es-CO'),
             formatCurrency(trip.montoTotal),
-            formatCurrency(trip.comision),
             formatCurrency(trip.gananciaNeta)
         ];
         values.forEach((value) => {
@@ -1735,12 +1787,15 @@ function addAvailableRide(request) {
 }
 
 function showTrip(trip) {
-    if (activeTrip && activeTrip.id !== trip.id) setDriverContact(null);
+    if (activeTrip && activeTrip.id !== trip.id) {
+        setDriverContact(null);
+        removeLiveMarkers();
+    }
     activeTrip = trip;
     showRoute(trip);
     const account = JSON.parse(localStorage.getItem('gps-user'));
     maybePromptTripRating(trip);
-    syncDriverLocationTracking();
+    syncTripLocationTracking();
     if (account.rol === 'Pasajero') {
         const panel = document.getElementById('passenger-trip');
         renderPassengerActiveTrip(trip);
@@ -1759,7 +1814,9 @@ function showTrip(trip) {
         details.textContent = trip.conductorId
             ? `${trip.estado === 'Llegando' ? 'Tu conductor ha llegado' : trip.estado === 'EnCurso' ? 'Viaje en curso' : trip.estado === 'PendientePago' ? 'Viaje finalizado, confirmando el pago' : trip.estado === 'Finalizado' ? 'Viaje finalizado' : 'Conductor en camino'}${acceptedDriverContact?.viajeId === trip.id && acceptedDriverContact.nombre ? ` · ${acceptedDriverContact.nombre}` : ''}${trip.vehiculo ? ` · ${trip.vehiculo}` : ''}${trip.placa ? ` · ${trip.placa}` : ''}`
             : 'Buscando un conductor...';
-        panel.append(title, details);
+        const price = document.createElement('p');
+        price.textContent = `Tarifa total: ${formatCurrency(trip.precio)}`;
+        panel.append(title, details, price);
         document.getElementById('cancel-ride').hidden =
             !['Solicitado', 'Aceptado', 'Llegando'].includes(trip.estado);
         if (trip.pin) mostrarPin(trip.pin);
@@ -1783,20 +1840,22 @@ function showTrip(trip) {
         document.getElementById('driver-trip-distance').textContent =
             `Distancia estimada: ${estimatedTripDistance(trip).toFixed(1)} km`;
         document.getElementById('driver-trip-info').textContent = `Estado: ${trip.estado}`;
+        document.getElementById('view-passenger-profile').hidden = !hasCurrentTrip;
+        document.getElementById('driver-pin-guidance').hidden =
+            !['Aceptado', 'Llegando'].includes(trip.estado);
         document.getElementById('arriving-ride').hidden = trip.estado !== 'Aceptado';
         document.getElementById('driver-cancel-ride').hidden =
             !['Aceptado', 'Llegando'].includes(trip.estado);
         document.getElementById('pin-form').hidden = !['Aceptado', 'Llegando'].includes(trip.estado);
         document.getElementById('finish-ride').hidden = trip.estado !== 'EnCurso';
-        document.getElementById('driver-availability').disabled = hasCurrentTrip;
+        document.getElementById('driver-availability').disabled =
+            hasCurrentTrip || (!puedeConducir(account) && !driverConnected);
         if (showPaymentSummary) {
             const summary = finalizationSummary || {
                 montoTotal: trip.precio,
-                comision: trip.comisionPlataforma,
-                gananciaNeta: trip.precio - trip.comisionPlataforma
+                gananciaNeta: trip.precio
             };
             document.getElementById('payment-total').textContent = formatCurrency(summary.montoTotal);
-            document.getElementById('payment-commission').textContent = formatCurrency(summary.comision);
             document.getElementById('payment-net').textContent = formatCurrency(summary.gananciaNeta);
         }
     }
@@ -1809,9 +1868,8 @@ function showTrip(trip) {
     } else {
         hideContactWidget();
     }
-    if (trip.estado === 'Finalizado' && driverMarker) {
-        driverMarker.remove();
-        driverMarker = null;
+    if (trip.estado === 'Finalizado') {
+        removeLiveMarkers();
     }
 }
 
@@ -1866,13 +1924,20 @@ function renderPassengerActiveTrip(trip) {
     activeTripCard.hidden = !hasDriver;
     document.getElementById('passenger-sos').hidden = !showSafetyActions;
     document.getElementById('passenger-share-trip').hidden = !showSafetyActions;
+    const passengerPin = document.getElementById('passenger-trip-pin');
+    const showPassengerPin = Boolean(trip.pin) && ['Aceptado', 'Llegando'].includes(trip.estado);
+    passengerPin.hidden = !showPassengerPin;
+    document.getElementById('passenger-trip-pin-value').textContent =
+        showPassengerPin ? trip.pin : '';
     if (!hasDriver) {
         setDriverContact(null);
         document.getElementById('passenger-driver-call').removeAttribute('href');
         document.getElementById('passenger-driver-call').hidden = true;
+        document.getElementById('view-driver-profile').hidden = true;
         return;
     }
 
+    document.getElementById('view-driver-profile').hidden = false;
     const contact = {
         viajeId: trip.id,
         nombre: trip.conductorNombre,
@@ -1893,6 +1958,44 @@ function renderPassengerActiveTrip(trip) {
     document.getElementById('passenger-driver-eta').textContent =
         'Calculando tiempo de llegada...';
 }
+
+function showTripOtherUserProfile() {
+    if (!activeTrip) return;
+    const isPassenger = JSON.parse(localStorage.getItem('gps-user'))?.rol === 'Pasajero';
+    const profile = isPassenger
+        ? {
+            id: activeTrip.conductorId,
+            nombre: activeTrip.conductorNombre,
+            promedio: activeTrip.conductorPromedioCalificacion,
+            totalViajes: activeTrip.conductorTotalViajes
+        }
+        : {
+            id: activeTrip.pasajeroId,
+            nombre: activeTrip.pasajeroNombre,
+            promedio: activeTrip.pasajeroPromedioCalificacion,
+            totalViajes: activeTrip.pasajeroTotalViajes
+        };
+    if (!profile.id) return;
+
+    const promedio = Math.max(0, Math.min(5, Number(profile.promedio) || 0));
+    const estrellas = Math.round(promedio);
+    document.getElementById('trip-user-profile-title').textContent = 'Perfil del viaje';
+    document.getElementById('trip-user-profile-name').textContent = profile.nombre || 'Usuario';
+    document.getElementById('trip-user-profile-rating').textContent =
+        `${'★'.repeat(estrellas)}${'☆'.repeat(5 - estrellas)} ${promedio.toFixed(1)} / 5`;
+    document.getElementById('trip-user-profile-total-trips').textContent =
+        String(Number(profile.totalViajes) || 0);
+    document.getElementById('trip-user-profile-modal').hidden = false;
+}
+
+document.getElementById('view-driver-profile').addEventListener('click', showTripOtherUserProfile);
+document.getElementById('view-passenger-profile').addEventListener('click', showTripOtherUserProfile);
+document.getElementById('close-trip-user-profile').addEventListener('click', () => {
+    document.getElementById('trip-user-profile-modal').hidden = true;
+});
+document.getElementById('trip-user-profile-modal').addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) event.currentTarget.hidden = true;
+});
 
 function updatePassengerEta(location) {
     if (JSON.parse(localStorage.getItem('gps-user'))?.rol !== 'Pasajero'
@@ -1947,29 +2050,85 @@ function updateDriverMarker(location) {
             })
         }).addTo(map).bindPopup('Ubicación del conductor');
     } else {
-        driverMarker.setLatLng(position);
+        moveMarkerSmoothly(driverMarker, position);
     }
 }
 
-function syncDriverLocationTracking() {
+function updatePassengerMarker(location) {
+    const account = JSON.parse(localStorage.getItem('gps-user'));
+    if (account?.rol !== 'Conductor'
+        || location.usuarioId !== activeTrip?.pasajeroId) return;
+
+    const position = [location.latitud, location.longitud];
+    if (!passengerMarker) {
+        passengerMarker = L.marker(position, {
+            icon: L.divIcon({
+                className: 'live-passenger-marker',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            })
+        }).addTo(map).bindPopup('Ubicación del pasajero');
+    } else {
+        moveMarkerSmoothly(passengerMarker, position);
+    }
+}
+
+function removeLiveMarkers() {
+    driverMarker?.remove();
+    passengerMarker?.remove();
+    driverMarker = null;
+    passengerMarker = null;
+}
+
+function moveMarkerSmoothly(marker, position) {
+    const previousFrame = markerAnimationFrames.get(marker);
+    if (previousFrame) cancelAnimationFrame(previousFrame);
+
+    const start = marker.getLatLng();
+    const startedAt = performance.now();
+    const duration = 450;
+    const animate = (now) => {
+        const progress = Math.min(1, (now - startedAt) / duration);
+        const eased = progress * (2 - progress);
+        marker.setLatLng([
+            start.lat + (position[0] - start.lat) * eased,
+            start.lng + (position[1] - start.lng) * eased
+        ]);
+        if (progress < 1) {
+            markerAnimationFrames.set(marker, requestAnimationFrame(animate));
+        } else {
+            markerAnimationFrames.delete(marker);
+        }
+    };
+    markerAnimationFrames.set(marker, requestAnimationFrame(animate));
+}
+
+function syncTripLocationTracking() {
     const account = JSON.parse(localStorage.getItem('gps-user'));
     const hasActiveRide = ['Aceptado', 'Llegando', 'EnCurso'].includes(activeTrip?.estado);
-    const shouldTrack = account?.rol === 'Conductor' && hasActiveRide;
-    if (shouldTrack && driverLocationWatchId === null) {
+    const shouldTrack = ['Conductor', 'Pasajero'].includes(account?.rol) && hasActiveRide;
+    if (shouldTrack && tripLocationWatchId === null) {
         if (!navigator.geolocation) {
             showMessage(appMessage, 'Este dispositivo no ofrece geolocalización.');
             return;
         }
-        driverLocationWatchId = navigator.geolocation.watchPosition(
+        tripLocationWatchId = navigator.geolocation.watchPosition(
             ({ coords }) => {
                 const currentAccount = JSON.parse(localStorage.getItem('gps-user'));
-                if (!currentAccount || currentAccount.rol !== 'Conductor') return;
+                if (!currentAccount || !activeTrip) return;
                 const location = {
                     latitud: coords.latitude,
                     longitud: coords.longitude,
                     velocidad: Math.max(0, coords.speed || 0)
                 };
-                updateDriverMarker({ ...location, dispositivoId: currentAccount.usuarioId });
+                const position = [location.latitud, location.longitud];
+                if (activeTrip.estado === 'EnCurso') {
+                    if (map.getZoom() !== 16) map.setZoom(16);
+                    map.panTo(position, { animate: true, duration: 0.4 });
+                }
+                if (currentAccount.rol === 'Conductor') {
+                    updateDriverMarker({ ...location, dispositivoId: currentAccount.usuarioId });
+                }
                 if (!viajes || viajes.state !== signalR.HubConnectionState.Connected || !activeTrip) return;
                 viajes.invoke(
                     'ActualizarUbicacion',
@@ -1977,20 +2136,23 @@ function syncDriverLocationTracking() {
                     location.latitud,
                     location.longitud,
                     location.velocidad
-                ).catch((error) => showMessage(appMessage, `No se pudo enviar la ubicación: ${error.message}`));
+                ).catch((error) => showMessage(appMessage, `No se pudo compartir la ubicación: ${error.message}`));
             },
-            (error) => showMessage(appMessage, `No se pudo obtener la ubicación del conductor: ${error.message}`),
+            (error) => showMessage(appMessage, `No se pudo obtener la ubicación: ${error.message}`),
             { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 }
         );
-    } else if (!shouldTrack && driverLocationWatchId !== null) {
-        navigator.geolocation.clearWatch(driverLocationWatchId);
-        driverLocationWatchId = null;
+    } else if (!shouldTrack && tripLocationWatchId !== null) {
+        navigator.geolocation.clearWatch(tripLocationWatchId);
+        tripLocationWatchId = null;
     }
 }
 
 async function setDriverAvailability(available) {
     if (!viajes || viajes.state !== signalR.HubConnectionState.Connected) {
         throw new Error('No se puede cambiar la disponibilidad sin conexión al servidor.');
+    }
+    if (available && !puedeConducir(JSON.parse(localStorage.getItem('gps-user')))) {
+        throw new Error('Tus documentos están vencidos o pendientes de aprobación. Actualízalos antes de conectarte.');
     }
 
     await viajes.invoke('EstablecerDisponibilidad', available);
@@ -2004,7 +2166,7 @@ async function setDriverAvailability(available) {
     button.textContent = available ? 'Desconectarse' : 'Conectarse';
     button.classList.toggle('is-connected', available);
     button.setAttribute('aria-pressed', String(available));
-    syncDriverLocationTracking();
+    syncTripLocationTracking();
     document.getElementById('available-rides-section').hidden =
         !available || Boolean(activeTrip && activeTrip.estado !== 'Finalizado');
 
@@ -2023,7 +2185,9 @@ function hideTrip() {
     document.getElementById('driver-cancel-ride').hidden = true;
     document.getElementById('driver-trip').hidden = true;
     document.getElementById('payment-summary').hidden = true;
-    document.getElementById('driver-availability').disabled = false;
+    const account = JSON.parse(localStorage.getItem('gps-user'));
+    document.getElementById('driver-availability').disabled =
+        !puedeConducir(account) && !driverConnected;
     setDriverContact(null);
     hideContactWidget();
 }
@@ -2039,10 +2203,7 @@ function clearActiveTripUi() {
     for (const prefix of [...routeStops]) {
         removeRouteStop(prefix);
     }
-    if (driverMarker) {
-        driverMarker.remove();
-        driverMarker = null;
-    }
+    removeLiveMarkers();
     for (const key of Object.keys(addressMarkers)) {
         addressMarkers[key]?.remove();
         addressMarkers[key] = null;
@@ -2057,7 +2218,7 @@ function clearActiveTripUi() {
     document.getElementById('chat-messages').replaceChildren();
     hideTrip();
     map.setView([10.3910, -75.4794], 13);
-    syncDriverLocationTracking();
+    syncTripLocationTracking();
 }
 
 async function handleTripUpdate(trip) {
@@ -2093,8 +2254,10 @@ function showRoute(trip) {
             addWaypoints: false,
             draggableWaypoints: false,
             fitSelectedRoutes: true,
-            show: false,
-            lineOptions: { styles: [{ color: '#00b4d8', opacity: 0.9, weight: 6 }] },
+            position: 'bottomright',
+            show: true,
+            router: L.Routing.osrmv1({ language: 'es' }),
+            lineOptions: { styles: [{ color: '#00b4d8', opacity: 0.95, weight: 8 }] },
             createMarker: (index, waypoint) => {
                 const label = index === 0
                     ? 'Origen'
@@ -2125,10 +2288,13 @@ function renderMessage(message) {
 document.getElementById('chat-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!activeTrip || !chat) return;
-    const values = formValues(event.currentTarget);
+    const form = event.currentTarget;
+    const values = formValues(form);
     try {
         await chat.invoke('EnviarMensaje', activeTrip.id, values.texto);
-        event.currentTarget.reset();
+        if (form) {
+            form.reset();
+        }
     } catch (error) {
         showMessage(appMessage, error.message);
     }
@@ -2248,7 +2414,8 @@ document.getElementById('request-ride').addEventListener('click', async () => {
         origenLat: Number(originLat),
         origenLng: Number(originLng),
         destinoLat: Number(destinationLat),
-        destinoLng: Number(destinationLng)
+        destinoLng: Number(destinationLng),
+        metodoPago: document.getElementById('ride-payment-method').value
     };
     if (stops.length) {
         request.paradas = stops.map((stop) => ({
@@ -2318,8 +2485,10 @@ document.getElementById('driver-availability').addEventListener('click', async (
     } catch (error) {
         showMessage(appMessage, error.message);
     } finally {
-        button.disabled = Boolean(activeTrip
+        const account = JSON.parse(localStorage.getItem('gps-user'));
+        const hasCurrentTrip = Boolean(activeTrip
             && ['Aceptado', 'Llegando', 'EnCurso', 'PendientePago'].includes(activeTrip.estado));
+        button.disabled = (!puedeConducir(account) && !driverConnected) || hasCurrentTrip;
     }
 });
 
@@ -2419,7 +2588,12 @@ document.getElementById('finish-ride').addEventListener('click', async () => {
         finalizationSummary = await api(`/api/viajes/${activeTrip.id}/finalizar`, { method: 'POST' });
         activeTrip = finalizationSummary.viaje;
         showTrip(activeTrip);
-        showMessage(appMessage, 'Revisa el resumen y confirma cuando recibas el pago.');
+        if (activeTrip.estado === 'Finalizado') {
+            finalizationSummary = null;
+            showMessage(appMessage, 'Pago electrónico registrado. El viaje quedó cerrado.');
+        } else {
+            showMessage(appMessage, 'Revisa el resumen y confirma cuando recibas el pago.');
+        }
     } catch (error) {
         showMessage(appMessage, error.message);
     } finally {
@@ -2544,8 +2718,9 @@ async function prepareCall() {
             }
         };
         call.onconnectionstatechange = () => {
+            if (!call) return;
             document.getElementById('call-status').textContent =
-                call?.connectionState === 'connected' ? 'Llamada conectada' : `Llamada: ${call?.connectionState}`;
+                call.connectionState === 'connected' ? 'Llamada conectada' : `Llamada: ${call.connectionState}`;
         };
     }
     document.getElementById('end-call').hidden = false;
@@ -2565,9 +2740,23 @@ document.getElementById('call-button').addEventListener('click', async () => {
 
 async function receiveOffer(signal) {
     if (!activeTrip) return;
+    if (call || pendingCallOffer) {
+        await calls.invoke('RechazarLlamada', activeTrip.id);
+        return;
+    }
+    pendingCallOffer = signal;
+    document.getElementById('incoming-call-modal').hidden = false;
+    document.getElementById('call-status').textContent = 'Llamada entrante';
+}
+
+document.getElementById('accept-incoming-call').addEventListener('click', async () => {
+    if (!pendingCallOffer || !activeTrip || !calls) return;
+    const offer = pendingCallOffer;
+    pendingCallOffer = null;
+    document.getElementById('incoming-call-modal').hidden = true;
     try {
         await prepareCall();
-        await call.setRemoteDescription({ type: 'offer', sdp: signal.valor });
+        await call.setRemoteDescription({ type: 'offer', sdp: offer.valor });
         remoteDescriptionSet = true;
         await flushCandidates();
         const answer = await call.createAnswer();
@@ -2575,9 +2764,24 @@ async function receiveOffer(signal) {
         await calls.invoke('EnviarRespuesta', activeTrip.id, answer.sdp);
         document.getElementById('call-status').textContent = 'Conectando llamada...';
     } catch (error) {
-        showMessage(appMessage, `No se pudo responder la llamada: ${error.message}`);
+        endCall(`No se pudo responder la llamada: ${error.message}`);
+        showMessage(appMessage, error.message);
     }
-}
+});
+
+document.getElementById('reject-incoming-call').addEventListener('click', async () => {
+    if (!pendingCallOffer || !activeTrip || !calls) return;
+    pendingCallOffer = null;
+    queuedCandidates = [];
+    remoteDescriptionSet = false;
+    document.getElementById('incoming-call-modal').hidden = true;
+    try {
+        await calls.invoke('RechazarLlamada', activeTrip.id);
+        document.getElementById('call-status').textContent = 'Llamada rechazada';
+    } catch (error) {
+        showMessage(appMessage, error.message);
+    }
+});
 
 async function receiveAnswer(signal) {
     if (!call || call.signalingState !== 'have-local-offer') return;
@@ -2587,10 +2791,9 @@ async function receiveAnswer(signal) {
 }
 
 async function receiveCandidate(signal) {
-    if (!call) return;
     const candidate = new RTCIceCandidate(JSON.parse(signal.valor));
-    if (remoteDescriptionSet) await call.addIceCandidate(candidate);
-    else queuedCandidates.push(candidate);
+    if (!call || !remoteDescriptionSet) queuedCandidates.push(candidate);
+    else await call.addIceCandidate(candidate);
 }
 
 async function flushCandidates() {
@@ -2600,7 +2803,9 @@ async function flushCandidates() {
 
 document.getElementById('end-call').addEventListener('click', endCall);
 
-function endCall() {
+function endCall(status = 'Llamada finalizada') {
+    pendingCallOffer = null;
+    document.getElementById('incoming-call-modal').hidden = true;
     call?.close();
     call = null;
     localStream?.getTracks().forEach((track) => track.stop());
@@ -2609,7 +2814,7 @@ function endCall() {
     queuedCandidates = [];
     document.getElementById('remote-audio').srcObject = null;
     document.getElementById('end-call').hidden = true;
-    document.getElementById('call-status').textContent = 'Llamada finalizada';
+    document.getElementById('call-status').textContent = status;
 }
 
 document.getElementById('logout').addEventListener('click', async () => {
@@ -2629,9 +2834,8 @@ document.getElementById('logout').addEventListener('click', async () => {
     calls = chat = viajes = null;
     activeTrip = null;
     driverConnected = false;
-    syncDriverLocationTracking();
-    driverMarker?.remove();
-    driverMarker = null;
+    syncTripLocationTracking();
+    removeLiveMarkers();
     localStorage.removeItem('gps-token');
     localStorage.removeItem('gps-user');
     localStorage.removeItem('gps-driver-connected');
@@ -2698,7 +2902,7 @@ installAndroidButton.addEventListener('click', async () => {
 });
 
 installAppleButton.addEventListener('click', () => {
-    window.alert('Para instalar en iPhone: Toca el botón Compartir (el cuadro con la flecha hacia arriba) en la parte inferior de Safari y selecciona Añadir a la pantalla de inicio');
+    window.alert('Para instalar en iPhone: Toca el botón Compartir en Safari y selecciona Añadir a la pantalla de inicio');
 });
 
 window.addEventListener('appinstalled', () => {

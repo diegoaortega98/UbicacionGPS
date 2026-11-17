@@ -7,6 +7,7 @@ using GpsSystem.Api.Data;
 using GpsSystem.Api.Models;
 using GpsSystem.Api.Services;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace GpsSystem.Tests;
@@ -157,14 +158,47 @@ public sealed class ConductorVerificationTests
             client,
             $"/api/admin/verificar-conductor/{driver.UsuarioId}",
             adminToken,
-            new { Aprobado = true });
+            new
+            {
+                Aprobado = true,
+                FechaVencimientoDocumentos = DateTime.UtcNow.Date.AddMonths(6)
+            });
         approve.StatusCode.Should().Be(HttpStatusCode.OK);
+        var approved = await approve.Content.ReadFromJsonAsync<EstadoVerificacionConductorResponse>();
+        approved.Should().NotBeNull();
+        approved!.FechaVencimientoDocumentos.Should().NotBeNull();
 
         using var acceptedRide = await PostAuthorizedAsync(
             client,
             $"/api/viajes/{ride.Id}/aceptar",
             driver.Token);
         acceptedRide.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await dbContext.Users
+                .Where(usuario => usuario.Id == driver.UsuarioId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    usuario => usuario.FechaVencimientoDocumentos,
+                    DateTime.UtcNow.Date.AddDays(-1)));
+        }
+
+        using var expiredDriversResponse = await GetAuthorizedAsync(
+            client,
+            "/api/admin/conductores-vencidos",
+            adminToken);
+        expiredDriversResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var expiredDrivers = await expiredDriversResponse.Content.ReadFromJsonAsync<List<ConductorVencidoResponse>>();
+        expiredDrivers.Should().ContainSingle(item => item.Id == driver.UsuarioId);
+
+        using var expiredProfileResponse = await GetAuthorizedAsync(
+            client,
+            "/api/auth/perfil",
+            driver.Token);
+        var expiredProfile = await expiredProfileResponse.Content.ReadFromJsonAsync<PerfilUsuarioResponse>();
+        expiredProfile.Should().NotBeNull();
+        expiredProfile!.EstadoVerificacion.Should().Be("Vencido");
     }
 
     private static async Task<HttpResponseMessage> UploadDocumentAsync(

@@ -76,7 +76,8 @@ public sealed record PerfilUsuarioResponse(
     string? MotivoRechazo,
     bool TieneLicencia,
     bool TieneSoat,
-    bool TieneTarjetaPropiedad);
+    bool TieneTarjetaPropiedad,
+    DateTime? FechaVencimientoDocumentos);
 
 /// <summary>Datos que se pueden actualizar en el perfil del usuario autenticado.</summary>
 public sealed record ActualizarPerfilRequest
@@ -119,6 +120,11 @@ public sealed record ActualizarLugaresFavoritosRequest
 /// <summary>Ganancias netas acumuladas por el conductor en viajes finalizados.</summary>
 public sealed record GananciasResponse(decimal GananciasAcumuladas);
 
+public sealed record EstadisticasFinancierasConductorResponse(
+    decimal TotalRecaudado,
+    decimal GananciaNetaHoy,
+    decimal SaldoPendiente);
+
 /// <summary>Desglose financiero de un viaje finalizado para el historial del conductor.</summary>
 public sealed record HistorialViajeConductorResponse(
     Guid ViajeId,
@@ -157,7 +163,8 @@ public sealed record EstadoVerificacionConductorResponse(
     string? MotivoRechazo,
     bool TieneLicencia,
     bool TieneSoat,
-    bool TieneTarjetaPropiedad);
+    bool TieneTarjetaPropiedad,
+    DateTime? FechaVencimientoDocumentos);
 
 /// <summary>Conductor con documentos pendientes de revisión administrativa.</summary>
 public sealed record ConductorPendienteResponse(
@@ -174,9 +181,21 @@ public sealed record VerificarConductorRequest
 {
     public required bool Aprobado { get; init; }
 
+    public DateTime? FechaVencimientoDocumentos { get; init; }
+
     [StringLength(500)]
     public string? MotivoRechazo { get; init; }
 }
+
+public sealed record ConductorVencidoResponse(
+    string Id,
+    string Nombre,
+    string Email,
+    string Telefono,
+    DateTime? FechaVencimientoDocumentos,
+    string UrlLicencia,
+    string UrlSOAT,
+    string UrlTarjetaPropiedad);
 
 /// <summary>Datos necesarios para validar un código promocional.</summary>
 public sealed record ValidarPromocionRequest
@@ -230,6 +249,9 @@ public sealed record SolicitarViajeRequest
     [StringLength(32)]
     public string? CodigoPromo { get; init; }
 
+    [Required, RegularExpression("^(Efectivo|Transferencia|Tarjeta)$")]
+    public string MetodoPago { get; init; } = MetodosPago.Efectivo;
+
     [MaxLength(3)]
     public List<ParadaRequest>? Paradas { get; init; }
 }
@@ -275,6 +297,7 @@ public sealed record ViajeResponse(
     string Estado,
     decimal Precio,
     decimal ComisionPlataforma,
+    string MetodoPago,
     DateTimeOffset FechaCreacion,
     string? PasajeroNombre,
     string? Vehiculo,
@@ -283,7 +306,11 @@ public sealed record ViajeResponse(
     string? ConductorTelefono,
     int? Calificacion,
     string? ComentarioCalificacion,
-    IReadOnlyList<ParadaResponse> Paradas);
+    IReadOnlyList<ParadaResponse> Paradas,
+    double PasajeroPromedioCalificacion,
+    int PasajeroTotalViajes,
+    double? ConductorPromedioCalificacion,
+    int? ConductorTotalViajes);
 
 /// <summary>Calificación de estrellas y comentario opcional de un viaje finalizado.</summary>
 public sealed record CalificarViajeRequest
@@ -336,6 +363,10 @@ public sealed record FirebaseWebConfigResponse(
 public sealed record AdminEstadisticasResponse(
     long TotalViajes,
     decimal ComisionesTotales,
+    decimal ComisionesRecibidas,
+    decimal ComisionesPorCobrarEfectivo,
     long ViajesHoy,
     int ConductoresActivos,
     decimal RecaudadoHoy);
+
+public sealed record ConductorConDeudaResponse(string Id, string Nombre, decimal SaldoPendiente);

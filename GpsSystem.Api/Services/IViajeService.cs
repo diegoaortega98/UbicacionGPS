@@ -25,6 +25,10 @@ public interface IViajeService
 
     Task<decimal> ObtenerGananciasAsync(string conductorId, CancellationToken cancellationToken);
 
+    Task<EstadisticasFinancierasConductorResponse> ObtenerEstadisticasFinancierasConductorHoyAsync(
+        string conductorId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<HistorialViajeConductorResponse>> ObtenerHistorialConductorAsync(
         string conductorId,
         CancellationToken cancellationToken);

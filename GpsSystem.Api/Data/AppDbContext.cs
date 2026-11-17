@@ -65,6 +65,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             .HasDefaultValue(0);
 
         modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.SaldoPendiente)
+            .HasDefaultValue(0m);
+
+        modelBuilder.Entity<Usuario>()
             .Property(usuario => usuario.DireccionCasa)
             .HasMaxLength(300);
 
@@ -112,6 +116,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
 
         modelBuilder.Entity<Viaje>()
             .HasIndex(viaje => new { viaje.Estado, viaje.FechaCreacion });
+
+        modelBuilder.Entity<Viaje>()
+            .Property(viaje => viaje.MetodoPago)
+            .HasMaxLength(20)
+            .HasDefaultValue(MetodosPago.Efectivo);
 
         modelBuilder.Entity<Viaje>()
             .HasOne(viaje => viaje.Promocion)

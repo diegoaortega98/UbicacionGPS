@@ -46,6 +46,7 @@ public sealed class ViajeService(
             DestinoLng = request.DestinoLng,
             Pin = tokenService.ProtegerPin(pin),
             Precio = precio,
+            MetodoPago = request.MetodoPago,
             PromocionId = promocion?.Id,
             Paradas = (request.Paradas ?? [])
                 .Select((parada, index) => new ParadaViaje
@@ -70,12 +71,31 @@ public sealed class ViajeService(
 
     public async Task<ViajeResponse> AceptarAsync(Guid viajeId, string conductorId, CancellationToken cancellationToken)
     {
-        var verificado = await dbContext.Users.AsNoTracking()
-            .AnyAsync(usuario => usuario.Id == conductorId
-                && usuario.Rol == RolesUsuario.Conductor
-                && usuario.EstadoVerificacion == EstadoVerificacionConductor.Aprobado,
+        var conductor = await dbContext.Users.AsNoTracking()
+            .SingleOrDefaultAsync(usuario => usuario.Id == conductorId
+                && usuario.Rol == RolesUsuario.Conductor,
                 cancellationToken);
-        if (!verificado)
+        if (conductor is null)
+        {
+            throw new InvalidOperationException(
+                "Tu cuenta debe tener los documentos aprobados antes de aceptar viajes.");
+        }
+
+        if (conductor.EstadoVerificacion == EstadoVerificacionConductor.Aprobado
+            && (!conductor.FechaVencimientoDocumentos.HasValue
+                || conductor.FechaVencimientoDocumentos.Value.Date < DateTime.UtcNow.Date))
+        {
+            await dbContext.Users
+                .Where(usuario => usuario.Id == conductorId)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(
+                        usuario => usuario.EstadoVerificacion,
+                        EstadoVerificacionConductor.Vencido),
+                    cancellationToken);
+            throw new InvalidOperationException("Tus documentos están vencidos. Actualízalos antes de aceptar viajes.");
+        }
+
+        if (conductor.EstadoVerificacion != EstadoVerificacionConductor.Aprobado)
         {
             throw new InvalidOperationException(
                 "Tu cuenta debe tener los documentos aprobados antes de aceptar viajes.");
@@ -235,12 +255,14 @@ public sealed class ViajeService(
             throw new InvalidOperationException("Solo se pueden finalizar viajes en curso.");
         }
 
-        var comision = decimal.Round(viaje.Precio * 0.15m, 2, MidpointRounding.AwayFromZero);
+        var comision = CalcularComision(viaje.Precio);
         var finalizacion = DateTimeOffset.UtcNow;
+        var esEfectivo = viaje.MetodoPago == MetodosPago.Efectivo;
+        var estadoFinal = esEfectivo ? EstadosViaje.PendientePago : EstadosViaje.Finalizado;
         var affected = await dbContext.Viajes
             .Where(item => item.Id == viajeId && item.ConductorId == conductorId && item.Estado == EstadosViaje.EnCurso)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(item => item.Estado, EstadosViaje.PendientePago)
+                .SetProperty(item => item.Estado, estadoFinal)
                 .SetProperty(item => item.ComisionPlataforma, comision)
                 .SetProperty(item => item.FechaFinalizacion, finalizacion), cancellationToken);
 
@@ -249,12 +271,27 @@ public sealed class ViajeService(
             throw new InvalidOperationException("El viaje ya no está en curso.");
         }
 
+        if (esEfectivo)
+        {
+            var conductorActualizado = await dbContext.Users
+                .Where(usuario => usuario.Id == conductorId)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(
+                        usuario => usuario.SaldoPendiente,
+                        usuario => usuario.SaldoPendiente + comision),
+                    cancellationToken);
+            if (conductorActualizado == 0)
+            {
+                throw new InvalidOperationException("No se encontró el conductor para registrar el saldo pendiente.");
+            }
+        }
+
         dbContext.Transacciones.Add(new Transaccion
         {
             ViajeId = viajeId,
             Monto = viaje.Precio,
             Comision = comision,
-            Estado = "Pendiente",
+            Estado = esEfectivo ? "Pendiente" : "Pagado",
             FechaCreacion = finalizacion
         });
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -264,7 +301,7 @@ public sealed class ViajeService(
             viajeActualizado,
             viaje.Precio,
             comision,
-            viaje.Precio - comision);
+            esEfectivo ? viaje.Precio : viaje.Precio - comision);
     }
 
     public async Task<ViajeResponse> ConfirmarPagoRecibidoAsync(
@@ -307,16 +344,85 @@ public sealed class ViajeService(
     {
         var viajes = dbContext.Viajes.AsNoTracking()
             .Where(viaje => viaje.ConductorId == conductorId && viaje.Estado == EstadosViaje.Finalizado)
-            .Select(viaje => new { viaje.Precio, viaje.ComisionPlataforma });
+            .Select(viaje => new { viaje.Precio, viaje.ComisionPlataforma, viaje.MetodoPago });
         if (dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
         {
             var importes = await viajes.ToListAsync(cancellationToken);
-            return importes.Sum(viaje => viaje.Precio - viaje.ComisionPlataforma);
+            return importes.Sum(viaje => GananciaNeta(viaje.Precio, viaje.ComisionPlataforma, viaje.MetodoPago));
         }
 
         return await viajes.SumAsync(
-            viaje => viaje.Precio - viaje.ComisionPlataforma,
+            viaje => viaje.MetodoPago == MetodosPago.Efectivo
+                ? viaje.Precio
+                : viaje.Precio - viaje.ComisionPlataforma,
             cancellationToken);
+    }
+
+    public async Task<EstadisticasFinancierasConductorResponse> ObtenerEstadisticasFinancierasConductorHoyAsync(
+        string conductorId,
+        CancellationToken cancellationToken)
+    {
+        var inicioHoyUtc = new DateTimeOffset(DateTime.UtcNow.Date, TimeSpan.Zero);
+        var finHoyUtc = inicioHoyUtc.AddDays(1);
+        var finalizados = dbContext.Viajes.AsNoTracking()
+            .Where(viaje => viaje.ConductorId == conductorId
+                && viaje.Estado == EstadosViaje.Finalizado);
+        decimal totalRecaudado;
+        List<(decimal Precio, decimal Comision, string MetodoPago)> viajesHoy;
+        if (dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            var viajes = await finalizados
+                .Select(viaje => new
+                {
+                    viaje.FechaFinalizacion,
+                    viaje.Precio,
+                    viaje.ComisionPlataforma,
+                    viaje.MetodoPago
+                })
+                .ToListAsync(cancellationToken);
+            totalRecaudado = viajes.Sum(viaje => viaje.Precio);
+            viajesHoy = viajes
+                .Where(viaje => viaje.FechaFinalizacion >= inicioHoyUtc
+                    && viaje.FechaFinalizacion < finHoyUtc)
+                .Select(viaje => (
+                    Precio: viaje.Precio,
+                    Comision: viaje.ComisionPlataforma,
+                    MetodoPago: viaje.MetodoPago))
+                .ToList();
+        }
+        else
+        {
+            totalRecaudado = await finalizados.SumAsync(
+                viaje => (decimal?)viaje.Precio,
+                cancellationToken) ?? 0m;
+            var viajes = await finalizados
+                .Where(viaje => viaje.FechaFinalizacion >= inicioHoyUtc
+                    && viaje.FechaFinalizacion < finHoyUtc)
+                .Select(viaje => new
+                {
+                    viaje.Precio,
+                    viaje.ComisionPlataforma,
+                    viaje.MetodoPago
+                })
+                .ToListAsync(cancellationToken);
+            viajesHoy = viajes
+                .Select(viaje => (
+                    Precio: viaje.Precio,
+                    Comision: viaje.ComisionPlataforma,
+                    MetodoPago: viaje.MetodoPago))
+                .ToList();
+        }
+
+        var gananciaNeta = viajesHoy.Sum(viaje =>
+            GananciaNeta(viaje.Precio, viaje.Comision, viaje.MetodoPago));
+        var saldoPendiente = await dbContext.Users.AsNoTracking()
+            .Where(usuario => usuario.Id == conductorId)
+            .Select(usuario => usuario.SaldoPendiente)
+            .SingleAsync(cancellationToken);
+        return new EstadisticasFinancierasConductorResponse(
+            totalRecaudado,
+            gananciaNeta,
+            saldoPendiente);
     }
 
     public async Task<IReadOnlyList<HistorialViajeConductorResponse>> ObtenerHistorialConductorAsync(
@@ -337,7 +443,7 @@ public sealed class ViajeService(
                     viaje.FechaFinalizacion ?? viaje.FechaCreacion,
                     viaje.Precio,
                     viaje.ComisionPlataforma,
-                    viaje.Precio - viaje.ComisionPlataforma))
+                    GananciaNeta(viaje.Precio, viaje.ComisionPlataforma, viaje.MetodoPago)))
                 .ToArray();
         }
 
@@ -349,7 +455,9 @@ public sealed class ViajeService(
                 viaje.FechaFinalizacion ?? viaje.FechaCreacion,
                 viaje.Precio,
                 viaje.ComisionPlataforma,
-                viaje.Precio - viaje.ComisionPlataforma))
+                viaje.MetodoPago == MetodosPago.Efectivo
+                    ? viaje.Precio
+                    : viaje.Precio - viaje.ComisionPlataforma))
             .ToListAsync(cancellationToken);
     }
 
@@ -435,18 +543,19 @@ public sealed class ViajeService(
         {
             var solicitudes = await consulta
                 .ToListAsync(cancellationToken);
-            return solicitudes
+            var resultados = solicitudes
                 .Select(Mapear)
                 .Where(viaje => viaje.FechaCreacion >= limiteReciente)
                 .OrderBy(viaje => viaje.FechaCreacion)
                 .ToArray();
+            return await AgregarTotalViajesAsync(resultados, cancellationToken);
         }
 
-        return await consulta
+        var viajesDisponibles = await consulta
             .Where(viaje => viaje.FechaCreacion >= limiteReciente)
             .OrderBy(viaje => viaje.FechaCreacion)
-            .Select(viaje => Mapear(viaje))
             .ToListAsync(cancellationToken);
+        return await AgregarTotalViajesAsync(viajesDisponibles.Select(Mapear).ToArray(), cancellationToken);
     }
 
     public async Task<IReadOnlyList<ViajeResponse>> ObtenerPropiosAsync(
@@ -463,9 +572,9 @@ public sealed class ViajeService(
             ? viajes.Where(viaje => viaje.ConductorId == usuarioId)
             : viajes.Where(viaje => viaje.PasajeroId == usuarioId);
 
-        return await viajes.OrderByDescending(viaje => viaje.FechaCreacion)
-            .Select(viaje => Mapear(viaje))
+        var resultados = await viajes.OrderByDescending(viaje => viaje.FechaCreacion)
             .ToListAsync(cancellationToken);
+        return await AgregarTotalViajesAsync(resultados.Select(Mapear).ToArray(), cancellationToken);
     }
 
     public async Task<IReadOnlyList<ViajeResponse>> ObtenerHistorialAsync(
@@ -483,32 +592,35 @@ public sealed class ViajeService(
         if (dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
         {
             var viajes = await historial.ToListAsync(cancellationToken);
-            return viajes
+            var resultados = viajes
                 .OrderByDescending(viaje => viaje.FechaFinalizacion ?? viaje.FechaCreacion)
                 .Take(20)
                 .Select(Mapear)
                 .ToArray();
+            return await AgregarTotalViajesAsync(resultados, cancellationToken);
         }
 
-        return await historial
+        var historialViajes = await historial
             .OrderByDescending(viaje => viaje.FechaFinalizacion ?? viaje.FechaCreacion)
             .Take(20)
-            .Select(viaje => Mapear(viaje))
             .ToListAsync(cancellationToken);
+        return await AgregarTotalViajesAsync(historialViajes.Select(Mapear).ToArray(), cancellationToken);
     }
 
     public async Task<ViajeResponse?> ObtenerAsync(Guid viajeId, string usuarioId, CancellationToken cancellationToken)
     {
-        var viaje = await dbContext.Viajes.AsNoTracking()
+        var entidad = await dbContext.Viajes.AsNoTracking()
             .Include(item => item.Pasajero)
             .Include(item => item.Conductor)
                 .ThenInclude(conductor => conductor!.PerfilConductor)
             .Include(item => item.Paradas)
             .Where(item => item.Id == viajeId
                 && (item.PasajeroId == usuarioId || item.ConductorId == usuarioId))
-            .Select(item => Mapear(item))
             .SingleOrDefaultAsync(cancellationToken);
-        return viaje;
+        if (entidad is null) return null;
+
+        var viaje = await AgregarTotalViajesAsync([Mapear(entidad)], cancellationToken);
+        return viaje[0];
     }
 
     public async Task<ViajeResponse> CalificarAsync(
@@ -577,20 +689,63 @@ public sealed class ViajeService(
         return await ObtenerRespuestaAsync(viajeId, cancellationToken);
     }
 
-    private async Task<ViajeResponse> ObtenerRespuestaAsync(Guid viajeId, CancellationToken cancellationToken) =>
-        await dbContext.Viajes.AsNoTracking()
+    private async Task<ViajeResponse> ObtenerRespuestaAsync(Guid viajeId, CancellationToken cancellationToken)
+    {
+        var viaje = await dbContext.Viajes.AsNoTracking()
             .Include(viaje => viaje.Pasajero)
             .Include(viaje => viaje.Conductor)
                 .ThenInclude(conductor => conductor!.PerfilConductor)
             .Include(viaje => viaje.Paradas)
             .Where(viaje => viaje.Id == viajeId)
-            .Select(viaje => Mapear(viaje))
             .SingleAsync(cancellationToken);
+        var resultados = await AgregarTotalViajesAsync([Mapear(viaje)], cancellationToken);
+        return resultados[0];
+    }
+
+    private async Task<IReadOnlyList<ViajeResponse>> AgregarTotalViajesAsync(
+        IReadOnlyList<ViajeResponse> viajes,
+        CancellationToken cancellationToken)
+    {
+        if (viajes.Count == 0) return viajes;
+
+        var pasajeroIds = viajes.Select(viaje => viaje.PasajeroId).Distinct().ToArray();
+        var conductorIds = viajes.Where(viaje => viaje.ConductorId is not null)
+            .Select(viaje => viaje.ConductorId!)
+            .Distinct()
+            .ToArray();
+
+        var totalViajesPasajero = pasajeroIds.Length == 0
+            ? new Dictionary<string, int>()
+            : await dbContext.Viajes.AsNoTracking()
+                .Where(viaje => viaje.Estado == EstadosViaje.Finalizado
+                    && pasajeroIds.Contains(viaje.PasajeroId))
+                .GroupBy(viaje => viaje.PasajeroId)
+                .Select(grupo => new { UsuarioId = grupo.Key, Total = grupo.Count() })
+                .ToDictionaryAsync(grupo => grupo.UsuarioId, grupo => grupo.Total, cancellationToken);
+
+        var totalViajesConductor = conductorIds.Length == 0
+            ? new Dictionary<string, int>()
+            : await dbContext.Viajes.AsNoTracking()
+                .Where(viaje => viaje.Estado == EstadosViaje.Finalizado
+                    && viaje.ConductorId != null
+                    && conductorIds.Contains(viaje.ConductorId))
+                .GroupBy(viaje => viaje.ConductorId!)
+                .Select(grupo => new { UsuarioId = grupo.Key, Total = grupo.Count() })
+                .ToDictionaryAsync(grupo => grupo.UsuarioId, grupo => grupo.Total, cancellationToken);
+
+        return viajes.Select(viaje => viaje with
+        {
+            PasajeroTotalViajes = totalViajesPasajero.GetValueOrDefault(viaje.PasajeroId),
+            ConductorTotalViajes = viaje.ConductorId is null
+                ? null
+                : totalViajesConductor.GetValueOrDefault(viaje.ConductorId)
+        }).ToArray();
+    }
 
     private static ViajeResponse Mapear(Viaje viaje) =>
         new(viaje.Id, viaje.PasajeroId, viaje.ConductorId,
             viaje.OrigenLat, viaje.OrigenLng, viaje.DestinoLat, viaje.DestinoLng,
-            viaje.Estado, viaje.Precio, viaje.ComisionPlataforma, viaje.FechaCreacion,
+            viaje.Estado, viaje.Precio, viaje.ComisionPlataforma, viaje.MetodoPago, viaje.FechaCreacion,
             string.IsNullOrWhiteSpace(viaje.Pasajero.Nombre)
                 ? viaje.Pasajero.Email
                 : viaje.Pasajero.Nombre,
@@ -604,12 +759,22 @@ public sealed class ViajeService(
             viaje.Conductor == null ? null : viaje.Conductor.Telefono,
             viaje.Calificacion,
             viaje.ComentarioCalificacion,
-            MapearParadas(viaje.Paradas));
+            MapearParadas(viaje.Paradas),
+            viaje.Pasajero.PromedioCalificacion,
+            0,
+            viaje.Conductor?.PromedioCalificacion,
+            viaje.Conductor is null ? null : 0);
 
     private static ParadaResponse[] MapearParadas(IEnumerable<ParadaViaje> paradas) =>
         paradas.OrderBy(parada => parada.Orden)
             .Select(parada => new ParadaResponse(parada.Orden, parada.Latitud, parada.Longitud))
             .ToArray();
+
+    private static decimal CalcularComision(decimal precio) =>
+        Math.Clamp(decimal.Round(precio * 0.15m, 2, MidpointRounding.AwayFromZero), 800m, 3000m);
+
+    private static decimal GananciaNeta(decimal precio, decimal comision, string metodoPago) =>
+        metodoPago == MetodosPago.Efectivo ? precio : precio - comision;
 
     private static decimal CalcularTarifa(SolicitarViajeRequest request)
     {
@@ -639,7 +804,8 @@ public sealed class ViajeService(
 
         distanceKm *= 1.3;
         var estimate = 5000m + (decimal)distanceKm * 1800m;
-        return decimal.Ceiling(estimate / 500m) * 500m;
+        var distanceFare = decimal.Ceiling(estimate / 500m) * 500m;
+        return distanceFare + (request.Paradas?.Count ?? 0) * 2_000m;
     }
 
     private static double DegreesToRadians(double degrees) => degrees * Math.PI / 180d;

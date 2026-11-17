@@ -113,6 +113,7 @@
                 <button id="add-route-stop" class="secondary compact add-route-stop" type="button">
                     ➕ Agregar Parada
                 </button>
+                <p class="route-stops-hint">Las paradas adicionales generan un costo extra</p>
                 <div class="favorite-place-actions" aria-label="Lugares favoritos">
                     <button id="go-home" class="secondary" type="button">🏠 Ir a Casa</button>
                     <button id="go-work" class="secondary" type="button">💼 Ir a Trabajo</button>
@@ -128,6 +129,13 @@
                         Precio estimado con descuento: <strong id="promo-estimated-price"></strong>
                     </p>
                 </div>
+                <label for="ride-payment-method">Método de pago
+                    <select id="ride-payment-method">
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Transferencia">Transferencia</option>
+                        <option value="Tarjeta">Tarjeta</option>
+                    </select>
+                </label>
                 <div class="button-row">
                     <button id="use-location" class="secondary" type="button">📍 Usar mi ubicación actual</button>
                 </div>
@@ -137,7 +145,9 @@
                 <section id="passenger-active-trip" class="trip-summary passenger-active-trip" hidden>
                     <h3>Tu conductor</h3>
                     <p>Conductor: <strong id="passenger-driver-name"></strong></p>
+                    <p id="passenger-trip-pin" class="trip-pin-card" hidden>PIN para iniciar el viaje: <strong id="passenger-trip-pin-value"></strong></p>
                     <a id="passenger-driver-call" class="primary passenger-driver-call" hidden>📞 Llamar</a>
+                    <button id="view-driver-profile" class="secondary" type="button">Ver Perfil</button>
                     <p id="passenger-driver-eta" role="status" aria-live="polite">Calculando tiempo de llegada...</p>
                     <div class="passenger-safety-actions">
                         <button id="passenger-sos" class="passenger-sos-button" type="button" hidden>🚨 SOS</button>
@@ -173,6 +183,8 @@
                     <p id="driver-trip-passenger"></p>
                     <p id="driver-trip-distance"></p>
                     <p id="driver-trip-info"></p>
+                    <button id="view-passenger-profile" class="secondary" type="button">Ver Perfil</button>
+                    <p id="driver-pin-guidance" class="trip-pin-card">Solicita al pasajero su PIN de cuatro dígitos para iniciar el viaje.</p>
                     <div class="driver-trip-actions">
                         <button id="arriving-ride" class="secondary" type="button" hidden>Estoy llegando</button>
                         <button id="driver-cancel-ride" class="danger" type="button" hidden>Cancelar Viaje</button>
@@ -186,7 +198,6 @@
                 <div id="payment-summary" class="trip-summary payment-summary" hidden>
                     <h3>Resumen del viaje</h3>
                     <div class="payment-line"><span>Total del viaje</span><strong id="payment-total"></strong></div>
-                    <div class="payment-line"><span>Comisión de plataforma (15%)</span><strong id="payment-commission"></strong></div>
                     <div class="payment-line payment-net"><span>Tus ganancias</span><strong id="payment-net"></strong></div>
                     <button id="confirm-payment" class="primary" type="button">Pago Recibido</button>
                 </div>
@@ -298,6 +309,31 @@
         </div>
     </section>
 
+    <section id="trip-user-profile-modal" class="modal-backdrop" hidden>
+        <div class="profile-modal card" role="dialog" aria-modal="true" aria-labelledby="trip-user-profile-title">
+            <header class="profile-modal-header">
+                <h2 id="trip-user-profile-title">Perfil</h2>
+                <button id="close-trip-user-profile" class="secondary compact" type="button" aria-label="Cerrar perfil">×</button>
+            </header>
+            <p>Nombre: <strong id="trip-user-profile-name"></strong></p>
+            <p>Calificación: <strong id="trip-user-profile-rating"></strong></p>
+            <p>Viajes completados: <strong id="trip-user-profile-total-trips"></strong></p>
+        </div>
+    </section>
+
+    <section id="incoming-call-modal" class="modal-backdrop" hidden>
+        <div class="profile-modal card" role="dialog" aria-modal="true" aria-labelledby="incoming-call-title">
+            <header class="profile-modal-header">
+                <h2 id="incoming-call-title">Llamada entrante</h2>
+            </header>
+            <p>Tu contacto del viaje te está llamando por Internet.</p>
+            <div class="profile-modal-actions">
+                <button id="accept-incoming-call" class="primary" type="button">Aceptar</button>
+                <button id="reject-incoming-call" class="secondary" type="button">Rechazar</button>
+            </div>
+        </div>
+    </section>
+
     <section id="trip-history-modal" class="modal-backdrop" hidden>
         <div class="history-modal card" role="dialog" aria-modal="true" aria-labelledby="trip-history-title">
             <header class="profile-modal-header">
@@ -336,10 +372,21 @@
                 <h2 id="driver-wallet-title">Mi Billetera</h2>
                 <button id="close-driver-wallet" class="secondary compact" type="button" aria-label="Cerrar billetera">×</button>
             </header>
-            <div class="wallet-summary" aria-live="polite">
-                <span>Ganancia Total</span>
-                <strong id="wallet-total">$0</strong>
+            <div class="wallet-finance-grid" aria-live="polite">
+                <div class="wallet-summary">
+                    <span>Total Recaudado</span>
+                    <strong id="wallet-collected-today">$0</strong>
+                </div>
+                <div class="wallet-summary">
+                    <span>Ganancia Neta Hoy</span>
+                    <strong id="wallet-net-today">$0</strong>
+                </div>
+                <div class="wallet-summary wallet-net-summary">
+                    <span>Saldo Pendiente con la App</span>
+                    <strong id="wallet-pending-balance">$0</strong>
+                </div>
             </div>
+            <button id="settle-pending-balance" class="secondary" type="button" hidden>Liquidar Saldo</button>
             <p id="wallet-message" class="message" aria-live="polite"></p>
             <div id="wallet-history-container" class="wallet-table-container" hidden>
                 <table class="wallet-table">
@@ -347,7 +394,6 @@
                         <tr>
                             <th scope="col">Fecha</th>
                             <th scope="col">Monto</th>
-                            <th scope="col">Comisión</th>
                             <th scope="col">Ganancia Neta</th>
                         </tr>
                     </thead>
@@ -355,7 +401,6 @@
                 </table>
             </div>
             <p id="wallet-empty" class="hint" hidden>No hay viajes finalizados todavía.</p>
-            <button id="request-withdrawal" class="primary wallet-withdrawal" type="button">Solicitar Retiro</button>
         </div>
     </section>
 

@@ -35,17 +35,27 @@ public sealed class AdminController(
         var finHoyUtc = inicioHoyUtc.AddDays(1);
         long totalViajes;
         decimal comisionesTotales;
+        decimal comisionesRecibidas;
+        decimal comisionesPorCobrarEfectivo;
         long viajesHoy;
         decimal recaudadoHoy;
         if (dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
         {
             var fechasYComisiones = await viajesFinalizados
-                .Select(viaje => new { viaje.FechaFinalizacion, viaje.ComisionPlataforma })
+                .Select(viaje => new
+                {
+                    viaje.FechaFinalizacion,
+                    viaje.ComisionPlataforma,
+                    viaje.MetodoPago
+                })
                 .ToListAsync(cancellationToken);
             var hoy = fechasYComisiones.Where(viaje =>
                 viaje.FechaFinalizacion >= inicioHoyUtc && viaje.FechaFinalizacion < finHoyUtc);
             totalViajes = fechasYComisiones.Count;
             comisionesTotales = fechasYComisiones.Sum(viaje => viaje.ComisionPlataforma);
+            comisionesRecibidas = fechasYComisiones
+                .Where(viaje => MetodosPago.EsElectronico(viaje.MetodoPago))
+                .Sum(viaje => viaje.ComisionPlataforma);
             viajesHoy = hoy.LongCount();
             recaudadoHoy = hoy.Sum(viaje => viaje.ComisionPlataforma);
         }
@@ -55,6 +65,10 @@ public sealed class AdminController(
             comisionesTotales = await viajesFinalizados.SumAsync(
                 viaje => viaje.ComisionPlataforma,
                 cancellationToken);
+            comisionesRecibidas = await viajesFinalizados
+                .Where(viaje => viaje.MetodoPago == MetodosPago.Transferencia
+                    || viaje.MetodoPago == MetodosPago.Tarjeta)
+                .SumAsync(viaje => (decimal?)viaje.ComisionPlataforma, cancellationToken) ?? 0m;
             var viajesFinalizadosHoy = viajesFinalizados
                 .Where(viaje => viaje.FechaFinalizacion >= inicioHoyUtc
                     && viaje.FechaFinalizacion < finHoyUtc);
@@ -63,15 +77,74 @@ public sealed class AdminController(
                 viaje => viaje.ComisionPlataforma,
                 cancellationToken);
         }
+        var saldosConductores = dbContext.Users.AsNoTracking()
+            .Where(usuario => usuario.Rol == RolesUsuario.Conductor)
+            .Select(usuario => usuario.SaldoPendiente);
+        comisionesPorCobrarEfectivo = dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite"
+            ? (await saldosConductores.ToListAsync(cancellationToken)).Sum()
+            : await saldosConductores.SumAsync(cancellationToken);
 
         var estadisticas = new AdminEstadisticasResponse(
             totalViajes,
             comisionesTotales,
+            comisionesRecibidas,
+            comisionesPorCobrarEfectivo,
             viajesHoy,
             conductoresActivos.TotalConductoresActivos,
             recaudadoHoy);
 
         return Ok(estadisticas);
+    }
+
+    [HttpGet("conductores-con-deuda")]
+    [Authorize(Roles = RolesUsuario.Admin)]
+    [ProducesResponseType<IReadOnlyList<ConductorConDeudaResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<ConductorConDeudaResponse>>> ConductoresConDeuda(
+        CancellationToken cancellationToken)
+    {
+        var conductoresQuery = dbContext.Users.AsNoTracking()
+            .Where(usuario => usuario.Rol == RolesUsuario.Conductor);
+        if (dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            var conductores = await conductoresQuery
+                .Select(usuario => new ConductorConDeudaResponse(
+                    usuario.Id,
+                    usuario.Nombre,
+                    usuario.SaldoPendiente))
+                .ToListAsync(cancellationToken);
+            return Ok(conductores
+                .Where(usuario => usuario.SaldoPendiente > 0)
+                .OrderByDescending(usuario => usuario.SaldoPendiente)
+                .ThenBy(usuario => usuario.Nombre)
+                .ToArray());
+        }
+
+        var deudores = await conductoresQuery
+            .Where(usuario => usuario.SaldoPendiente > 0)
+            .OrderByDescending(usuario => usuario.SaldoPendiente)
+            .ThenBy(usuario => usuario.Nombre)
+            .Select(usuario => new ConductorConDeudaResponse(
+                usuario.Id,
+                usuario.Nombre,
+                usuario.SaldoPendiente))
+            .ToListAsync(cancellationToken);
+
+        return Ok(deudores);
+    }
+
+    [HttpPost("conductores/{id}/marcar-pagado")]
+    [Authorize(Roles = RolesUsuario.Admin)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> MarcarSaldoPagado(string id, CancellationToken cancellationToken)
+    {
+        var actualizado = await dbContext.Users
+            .Where(usuario => usuario.Id == id && usuario.Rol == RolesUsuario.Conductor)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(usuario => usuario.SaldoPendiente, 0m),
+                cancellationToken);
+
+        return actualizado == 0 ? NotFound() : NoContent();
     }
 
     [HttpGet("conductores-pendientes")]
@@ -94,6 +167,42 @@ public sealed class AdminController(
             conductor.Nombre,
             conductor.Email ?? string.Empty,
             conductor.Telefono,
+            CrearUrlDocumento(conductor.Id, TipoDocumentoConductor.Licencia),
+            CrearUrlDocumento(conductor.Id, TipoDocumentoConductor.SOAT),
+            CrearUrlDocumento(conductor.Id, TipoDocumentoConductor.TarjetaPropiedad))).ToArray());
+    }
+
+    [HttpGet("conductores-vencidos")]
+    [Authorize(Roles = RolesUsuario.Admin)]
+    [ProducesResponseType<IReadOnlyList<ConductorVencidoResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<ConductorVencidoResponse>>> ConductoresVencidos(
+        CancellationToken cancellationToken)
+    {
+        var inicioHoyUtc = DateTime.UtcNow.Date;
+        await dbContext.Users
+            .Where(usuario => usuario.Rol == RolesUsuario.Conductor
+                && usuario.EstadoVerificacion == EstadoVerificacionConductor.Aprobado
+                && (usuario.FechaVencimientoDocumentos == null
+                    || usuario.FechaVencimientoDocumentos < inicioHoyUtc))
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(
+                    usuario => usuario.EstadoVerificacion,
+                    EstadoVerificacionConductor.Vencido),
+                cancellationToken);
+
+        var conductores = await dbContext.Users.AsNoTracking()
+            .Where(usuario => usuario.Rol == RolesUsuario.Conductor
+                && usuario.EstadoVerificacion == EstadoVerificacionConductor.Vencido)
+            .OrderBy(usuario => usuario.FechaVencimientoDocumentos)
+            .ThenBy(usuario => usuario.Nombre)
+            .ToListAsync(cancellationToken);
+
+        return Ok(conductores.Select(conductor => new ConductorVencidoResponse(
+            conductor.Id,
+            conductor.Nombre,
+            conductor.Email ?? string.Empty,
+            conductor.Telefono,
+            conductor.FechaVencimientoDocumentos,
             CrearUrlDocumento(conductor.Id, TipoDocumentoConductor.Licencia),
             CrearUrlDocumento(conductor.Id, TipoDocumentoConductor.SOAT),
             CrearUrlDocumento(conductor.Id, TipoDocumentoConductor.TarjetaPropiedad))).ToArray());
@@ -125,6 +234,16 @@ public sealed class AdminController(
 
         if (request.Aprobado)
         {
+            if (!request.FechaVencimientoDocumentos.HasValue
+                || request.FechaVencimientoDocumentos.Value.Date < DateTime.UtcNow.Date)
+            {
+                return BadRequest(new ProblemDetails
+                {
+                    Status = StatusCodes.Status400BadRequest,
+                    Title = "Indica una fecha de vencimiento igual o posterior a hoy."
+                });
+            }
+
             var documentosCompletos =
                 await documentoStorage.ExisteAsync(conductor.UrlLicencia, cancellationToken)
                 && await documentoStorage.ExisteAsync(conductor.UrlSOAT, cancellationToken)
@@ -143,6 +262,9 @@ public sealed class AdminController(
             ? EstadoVerificacionConductor.Aprobado
             : EstadoVerificacionConductor.Rechazado;
         conductor.MotivoRechazo = request.Aprobado ? null : request.MotivoRechazo!.Trim();
+        conductor.FechaVencimientoDocumentos = request.Aprobado
+            ? DateTime.SpecifyKind(request.FechaVencimientoDocumentos!.Value.Date, DateTimeKind.Utc)
+            : null;
         var resultado = await userManager.UpdateAsync(conductor);
         if (!resultado.Succeeded)
         {
@@ -157,7 +279,8 @@ public sealed class AdminController(
             conductor.MotivoRechazo,
             conductor.UrlLicencia is not null,
             conductor.UrlSOAT is not null,
-            conductor.UrlTarjetaPropiedad is not null));
+            conductor.UrlTarjetaPropiedad is not null,
+            conductor.FechaVencimientoDocumentos));
     }
 
     [HttpGet("conductores/{id}/documentos/{tipo}")]

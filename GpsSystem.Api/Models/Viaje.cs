@@ -13,6 +13,16 @@ public static class EstadosViaje
     public const string Finalizado = "Finalizado";
 }
 
+public static class MetodosPago
+{
+    public const string Efectivo = "Efectivo";
+    public const string Transferencia = "Transferencia";
+    public const string Tarjeta = "Tarjeta";
+
+    public static bool EsElectronico(string metodoPago) =>
+        metodoPago is Transferencia or Tarjeta;
+}
+
 public class Viaje
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -38,6 +48,9 @@ public class Viaje
     public string Pin { get; set; } = string.Empty;
 
     public decimal Precio { get; set; }
+
+    [MaxLength(20)]
+    public string MetodoPago { get; set; } = MetodosPago.Efectivo;
 
     public decimal ComisionPlataforma { get; set; }
 

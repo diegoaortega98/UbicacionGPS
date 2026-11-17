@@ -219,30 +219,36 @@ public class AuthController(
             return Unauthorized();
         }
 
-        var perfil = await dbContext.Users.AsNoTracking()
-            .Where(usuario => usuario.Id == usuarioId)
-            .Select(usuario => new PerfilUsuarioResponse(
-                usuario.Nombre,
-                usuario.Telefono,
-                usuario.PromedioCalificacion,
-                usuario.TotalCalificaciones,
-                usuario.DireccionCasa,
-                usuario.LatCasa,
-                usuario.LngCasa,
-                usuario.DireccionTrabajo,
-                usuario.LatTrabajo,
-                usuario.LngTrabajo,
-                usuario.EstadoVerificacion == EstadoVerificacionConductor.Aprobado
-                    ? "Aprobado"
-                    : usuario.EstadoVerificacion == EstadoVerificacionConductor.Rechazado
-                        ? "Rechazado"
-                        : "Pendiente",
-                usuario.MotivoRechazo,
-                usuario.UrlLicencia != null,
-                usuario.UrlSOAT != null,
-                usuario.UrlTarjetaPropiedad != null))
-            .SingleOrDefaultAsync(cancellationToken);
-        return perfil is null ? NotFound() : Ok(perfil);
+        var usuario = await dbContext.Users
+            .SingleOrDefaultAsync(item => item.Id == usuarioId, cancellationToken);
+        if (usuario is null) return NotFound();
+
+        if (usuario.Rol == RolesUsuario.Conductor
+            && usuario.EstadoVerificacion == EstadoVerificacionConductor.Aprobado
+            && (!usuario.FechaVencimientoDocumentos.HasValue
+                || usuario.FechaVencimientoDocumentos.Value.Date < DateTime.UtcNow.Date))
+        {
+            usuario.EstadoVerificacion = EstadoVerificacionConductor.Vencido;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return Ok(new PerfilUsuarioResponse(
+            usuario.Nombre,
+            usuario.Telefono,
+            usuario.PromedioCalificacion,
+            usuario.TotalCalificaciones,
+            usuario.DireccionCasa,
+            usuario.LatCasa,
+            usuario.LngCasa,
+            usuario.DireccionTrabajo,
+            usuario.LatTrabajo,
+            usuario.LngTrabajo,
+            usuario.EstadoVerificacion.ToString(),
+            usuario.MotivoRechazo,
+            usuario.UrlLicencia is not null,
+            usuario.UrlSOAT is not null,
+            usuario.UrlTarjetaPropiedad is not null,
+            usuario.FechaVencimientoDocumentos));
     }
 
     [HttpPut("perfil")]
@@ -404,5 +410,6 @@ public class AuthController(
             usuario.MotivoRechazo,
             usuario.UrlLicencia is not null,
             usuario.UrlSOAT is not null,
-            usuario.UrlTarjetaPropiedad is not null);
+            usuario.UrlTarjetaPropiedad is not null,
+            usuario.FechaVencimientoDocumentos);
 }

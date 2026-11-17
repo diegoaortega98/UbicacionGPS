@@ -24,6 +24,13 @@ public sealed class LlamadaHub : ViajeHubBase
     public Task EnviarCandidatoIce(Guid viajeId, string candidato) =>
         ReenviarAsync(viajeId, "CandidatoIce", candidato);
 
+    public async Task RechazarLlamada(Guid viajeId)
+    {
+        await ValidarParticipanteAsync(viajeId);
+        await Clients.GroupExcept(GrupoParticipantes(viajeId), Context.ConnectionId)
+            .SendAsync("LlamadaRechazada", new { usuarioId = UsuarioId }, Context.ConnectionAborted);
+    }
+
     private async Task ReenviarAsync(Guid viajeId, string evento, string valor)
     {
         if (string.IsNullOrWhiteSpace(valor) || valor.Length > 20_000)

@@ -33,14 +33,26 @@ public sealed class ViajeHub : ViajeHubBase
 
         if (disponible)
         {
-            var conductorVerificado = await _dbContext.Users.AsNoTracking().AnyAsync(
+            var conductor = await _dbContext.Users.AsNoTracking().SingleOrDefaultAsync(
                 usuario => usuario.Id == UsuarioId
-                    && usuario.Rol == RolesUsuario.Conductor
-                    && usuario.EstadoVerificacion == EstadoVerificacionConductor.Aprobado,
+                    && usuario.Rol == RolesUsuario.Conductor,
                 Context.ConnectionAborted);
-            if (!conductorVerificado)
+            if (conductor is null || conductor.EstadoVerificacion != EstadoVerificacionConductor.Aprobado)
             {
                 throw new HubException("Debes tener tus documentos aprobados antes de conectarte.");
+            }
+
+            if (!conductor.FechaVencimientoDocumentos.HasValue
+                || conductor.FechaVencimientoDocumentos.Value.Date < DateTime.UtcNow.Date)
+            {
+                await _dbContext.Users
+                    .Where(usuario => usuario.Id == conductor.Id)
+                    .ExecuteUpdateAsync(
+                        setters => setters.SetProperty(
+                            usuario => usuario.EstadoVerificacion,
+                            EstadoVerificacionConductor.Vencido),
+                        Context.ConnectionAborted);
+                throw new HubException("Tus documentos están vencidos. Actualízalos antes de conectarte.");
             }
 
             await Groups.AddToGroupAsync(Context.ConnectionId, GrupoConductores);
@@ -69,7 +81,9 @@ public sealed class ViajeHub : ViajeHubBase
     {
         try
         {
-            if (Context.User?.IsInRole(RolesUsuario.Conductor) != true
+            var esConductor = Context.User?.IsInRole(RolesUsuario.Conductor) == true;
+            var esPasajero = Context.User?.IsInRole(RolesUsuario.Pasajero) == true;
+            if ((!esConductor && !esPasajero)
                 || !double.IsFinite(latitud)
                 || !double.IsFinite(longitud)
                 || !double.IsFinite(velocidad)
@@ -77,12 +91,14 @@ public sealed class ViajeHub : ViajeHubBase
                 || longitud is < -180 or > 180
                 || velocidad < 0)
             {
-                throw new HubException("La ubicación del conductor no es válida.");
+                throw new HubException("La ubicación del participante no es válida.");
             }
 
             var viajeAsignado = await _dbContext.Viajes.AsNoTracking().AnyAsync(
                 viaje => viaje.Id == viajeId
-                    && viaje.ConductorId == UsuarioId
+                    && (esConductor
+                        ? viaje.ConductorId == UsuarioId
+                        : viaje.PasajeroId == UsuarioId)
                     && (viaje.Estado == EstadosViaje.Aceptado
                         || viaje.Estado == EstadosViaje.Llegando
                         || viaje.Estado == EstadosViaje.EnCurso),
@@ -92,10 +108,11 @@ public sealed class ViajeHub : ViajeHubBase
                 throw new HubException("No puedes compartir ubicación para este viaje.");
             }
 
-            await Clients.Group(GrupoViaje(viajeId)).SendAsync("UbicacionConductor", new
+            await Clients.Group(GrupoViaje(viajeId)).SendAsync("UbicacionParticipante", new
             {
                 viajeId,
-                conductorId = UsuarioId,
+                usuarioId = UsuarioId,
+                rol = esConductor ? RolesUsuario.Conductor : RolesUsuario.Pasajero,
                 latitud,
                 longitud,
                 velocidad,

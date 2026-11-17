@@ -55,6 +55,7 @@ public sealed class ConductorController(
         EstablecerClave(usuario, tipoDocumento, claveNueva);
         usuario.EstadoVerificacion = EstadoVerificacionConductor.Pendiente;
         usuario.MotivoRechazo = null;
+        usuario.FechaVencimientoDocumentos = null;
 
         var resultado = await userManager.UpdateAsync(usuario);
         if (!resultado.Succeeded)
@@ -107,6 +108,7 @@ public sealed class ConductorController(
 
         usuario.EstadoVerificacion = EstadoVerificacionConductor.Pendiente;
         usuario.MotivoRechazo = null;
+        usuario.FechaVencimientoDocumentos = null;
         var resultado = await userManager.UpdateAsync(usuario);
         if (!resultado.Succeeded)
         {
@@ -167,5 +169,6 @@ public sealed class ConductorController(
             usuario.MotivoRechazo,
             usuario.UrlLicencia is not null,
             usuario.UrlSOAT is not null,
-            usuario.UrlTarjetaPropiedad is not null);
+            usuario.UrlTarjetaPropiedad is not null,
+            usuario.FechaVencimientoDocumentos);
 }

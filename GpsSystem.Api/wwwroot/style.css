@@ -388,6 +388,22 @@ button:disabled {
     color: #285d3b;
 }
 
+.wallet-finance-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.wallet-net-summary {
+    border-color: #b6d6c1;
+    background: #dff0e5;
+}
+
+.route-stops-hint {
+    margin: -4px 0 10px;
+    color: #6a7888;
+    font-size: 12px;
+}
+
 .wallet-summary span {
     font-size: 13px;
     font-weight: 700;
@@ -803,6 +819,15 @@ h3 {
 .pin-banner span {
     color: #d3e2f1;
     font-size: 12px;
+}
+
+.trip-pin-card {
+    margin: 8px 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgb(18 59 99 / 10%);
+    color: #123B63;
+    font-weight: 600;
 }
 
 .pin-banner-close {
@@ -1480,6 +1505,7 @@ button {
 }
 
 .live-driver-marker,
+.live-passenger-marker,
 .telemetry-map-marker {
     border: 2px solid #e2e8f0;
     border-radius: 50%;
@@ -1489,6 +1515,11 @@ button {
 
 .live-driver-marker {
     animation: telemetry-pulse 1.8s ease-out infinite;
+}
+
+.live-passenger-marker {
+    background: #fbbf24;
+    box-shadow: 0 0 8px #fbbf24, 0 0 18px rgb(251 191 36 / 75%);
 }
 
 @keyframes telemetry-pulse {

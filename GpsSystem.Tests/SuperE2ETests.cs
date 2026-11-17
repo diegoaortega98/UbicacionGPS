@@ -62,7 +62,7 @@ public sealed class SuperE2ETests
             adminAuth.Token);
         initialStatsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         (await initialStatsResponse.Content.ReadFromJsonAsync<AdminEstadisticasResponse>())
-            .Should().Be(new AdminEstadisticasResponse(0, 0m, 0, 0, 0m));
+            .Should().Be(new AdminEstadisticasResponse(0, 0m, 0m, 0m, 0, 0, 0m));
 
         using var createPromo = await PostAuthorizedAsync(client, "/api/admin/promos", adminAuth.Token, new
         {
@@ -158,7 +158,7 @@ public sealed class SuperE2ETests
         trip.Should().NotBeNull();
         trip!.Paradas.Select(parada => parada.Orden).Should().Equal(1, 2);
         trip.Precio.Should().Be(decimal.Round(
-            EstimatePrice(origin, firstStop, secondStop, destination) * 0.8m,
+            (EstimatePrice(origin, firstStop, secondStop, destination) + 4_000m) * 0.8m,
             2,
             MidpointRounding.AwayFromZero));
 
@@ -192,7 +192,11 @@ public sealed class SuperE2ETests
             client,
             $"/api/admin/verificar-conductor/{driverAuth.UsuarioId}",
             adminAuth.Token,
-            new { Aprobado = true });
+            new
+            {
+                Aprobado = true,
+                FechaVencimientoDocumentos = DateTime.UtcNow.Date.AddMonths(6)
+            });
         approveDriver.StatusCode.Should().Be(HttpStatusCode.OK);
 
         using var acceptTrip = await PostAuthorizedAsync(
@@ -226,8 +230,10 @@ public sealed class SuperE2ETests
         var settlement = await finish.Content.ReadFromJsonAsync<FinalizacionViajeResponse>();
         settlement.Should().NotBeNull();
         settlement!.MontoTotal.Should().Be(trip.Precio);
-        settlement.GananciaNeta.Should().Be(
-            settlement.MontoTotal - settlement.Comision);
+        settlement.Comision.Should().Be(Math.Clamp(decimal.Round(
+            settlement.MontoTotal * 0.15m, 2, MidpointRounding.AwayFromZero), 800m, 3000m));
+        settlement.Comision.Should().Be(3000m);
+        settlement.GananciaNeta.Should().Be(settlement.MontoTotal);
         settlement.Viaje.Estado.Should().Be(EstadosViaje.PendientePago);
 
         using var confirmPayment = await PostAuthorizedAsync(
@@ -282,6 +288,30 @@ public sealed class SuperE2ETests
         finalStats.Should().NotBeNull();
         finalStats!.TotalViajes.Should().Be(1);
         finalStats.ComisionesTotales.Should().Be(settlement.Comision);
+        finalStats.ComisionesRecibidas.Should().Be(0m);
+        finalStats.ComisionesPorCobrarEfectivo.Should().Be(settlement.Comision);
+
+        using var driversWithDebtResponse = await GetAuthorizedAsync(
+            client,
+            "/api/admin/conductores-con-deuda",
+            adminAuth.Token);
+        driversWithDebtResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await driversWithDebtResponse.Content.ReadFromJsonAsync<List<ConductorConDeudaResponse>>())
+            .Should().ContainSingle(driver =>
+                driver.Id == driverAuth.UsuarioId && driver.SaldoPendiente == settlement.Comision);
+
+        using var markPaid = await PostAuthorizedAsync(
+            client,
+            $"/api/admin/conductores/{driverAuth.UsuarioId}/marcar-pagado",
+            adminAuth.Token);
+        markPaid.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var statsAfterPayment = await GetAuthorizedAsync(
+            client,
+            "/api/admin/estadisticas",
+            adminAuth.Token);
+        (await statsAfterPayment.Content.ReadFromJsonAsync<AdminEstadisticasResponse>())!
+            .ComisionesPorCobrarEfectivo.Should().Be(0m);
     }
 
     [Fact]
@@ -327,13 +357,31 @@ public sealed class SuperE2ETests
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             await dbContext.Users
                 .Where(usuario => usuario.Id == driver.UsuarioId)
-                .ExecuteUpdateAsync(setters => setters.SetProperty(
-                    usuario => usuario.EstadoVerificacion,
-                    EstadoVerificacionConductor.Aprobado));
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(
+                        usuario => usuario.EstadoVerificacion,
+                        EstadoVerificacionConductor.Aprobado)
+                    .SetProperty(
+                        usuario => usuario.FechaVencimientoDocumentos,
+                        DateTime.UtcNow.Date.AddMonths(6)));
         }
 
         await hub.EstablecerDisponibilidad(true);
         groups.AddedGroups.Should().ContainSingle(ViajeHub.GrupoConductores);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await dbContext.Users
+                .Where(usuario => usuario.Id == driver.UsuarioId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    usuario => usuario.FechaVencimientoDocumentos,
+                    DateTime.UtcNow.Date.AddDays(-1)));
+        }
+
+        var expiredAttempt = async () => await hub.EstablecerDisponibilidad(true);
+        await expiredAttempt.Should().ThrowAsync<HubException>()
+            .WithMessage("*vencidos*");
     }
 
     private static async Task<AuthResponse> LoginAsync(HttpClient client, string email, string password)

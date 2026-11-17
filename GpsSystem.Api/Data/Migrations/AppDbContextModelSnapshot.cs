@@ -276,6 +276,9 @@ namespace GpsSystem.Api.Data.Migrations
                     b.Property<int>("EstadoVerificacion")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("FechaVencimientoDocumentos")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<double?>("LatCasa")
                         .HasColumnType("double precision");
 
@@ -336,6 +339,11 @@ namespace GpsSystem.Api.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<decimal>("SaldoPendiente")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric")
+                        .HasDefaultValue(0m);
 
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
@@ -416,6 +424,13 @@ namespace GpsSystem.Api.Data.Migrations
 
                     b.Property<DateTimeOffset?>("FechaFinalizacion")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MetodoPago")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Efectivo");
 
                     b.Property<double>("OrigenLat")
                         .HasColumnType("double precision");

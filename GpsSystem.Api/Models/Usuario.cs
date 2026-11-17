@@ -18,6 +18,8 @@ public class Usuario : IdentityUser
 
     public int TotalCalificaciones { get; set; }
 
+    public decimal SaldoPendiente { get; set; } = 0m;
+
     public string? DireccionCasa { get; set; }
 
     public double? LatCasa { get; set; }
@@ -35,6 +37,8 @@ public class Usuario : IdentityUser
     public string? UrlSOAT { get; set; }
 
     public string? UrlTarjetaPropiedad { get; set; }
+
+    public DateTime? FechaVencimientoDocumentos { get; set; }
 
     public EstadoVerificacionConductor EstadoVerificacion { get; set; } =
         EstadoVerificacionConductor.Pendiente;
@@ -55,5 +59,6 @@ public enum EstadoVerificacionConductor
 {
     Pendiente,
     Aprobado,
-    Rechazado
+    Rechazado,
+    Vencido
 }

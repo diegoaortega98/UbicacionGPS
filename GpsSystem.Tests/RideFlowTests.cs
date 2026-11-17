@@ -81,17 +81,22 @@ public sealed class RideFlowTests
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             await dbContext.Users
                 .Where(usuario => usuario.Id == driverAuth.UsuarioId)
-                .ExecuteUpdateAsync(setters => setters.SetProperty(
-                    usuario => usuario.EstadoVerificacion,
-                    EstadoVerificacionConductor.Aprobado));
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(
+                        usuario => usuario.EstadoVerificacion,
+                        EstadoVerificacionConductor.Aprobado)
+                    .SetProperty(
+                        usuario => usuario.FechaVencimientoDocumentos,
+                        DateTime.UtcNow.Date.AddMonths(6)));
         }
 
         using var requestRide = await PostAuthorizedAsync(client, "/api/viajes/solicitar", passengerAuth.Token, new
         {
             OrigenLat = 19.4326,
             OrigenLng = -99.1332,
-            DestinoLat = 19.4270,
-            DestinoLng = -99.1276
+            DestinoLat = 19.4326,
+            DestinoLng = -99.1332,
+            MetodoPago = MetodosPago.Transferencia
         });
         requestRide.StatusCode.Should().Be(HttpStatusCode.Created);
         var rideRequest = await requestRide.Content.ReadFromJsonAsync<SolicitudViajeResponse>();
@@ -171,20 +176,31 @@ public sealed class RideFlowTests
         finishRide.StatusCode.Should().Be(HttpStatusCode.OK);
         var finalization = await finishRide.Content.ReadFromJsonAsync<FinalizacionViajeResponse>();
         finalization.Should().NotBeNull();
-        finalization!.Viaje.Estado.Should().Be(EstadosViaje.PendientePago);
+        finalization!.Viaje.Estado.Should().Be(EstadosViaje.Finalizado);
+        finalization.Viaje.MetodoPago.Should().Be(MetodosPago.Transferencia);
         finalization.MontoTotal.Should().Be(finalization.Viaje.Precio);
-        finalization.Comision.Should().Be(decimal.Round(
-            finalization.MontoTotal * 0.15m, 2, MidpointRounding.AwayFromZero));
+        finalization.Comision.Should().Be(Math.Clamp(decimal.Round(
+            finalization.MontoTotal * 0.15m, 2, MidpointRounding.AwayFromZero), 800m, 3000m));
+        finalization.Comision.Should().Be(800m);
         finalization.GananciaNeta.Should().Be(finalization.MontoTotal - finalization.Comision);
 
         using var paymentReceived = await PostAuthorizedAsync(
             client,
             $"/api/viajes/{rideRequest.Id}/pago-recibido",
             driverAuth.Token);
-        paymentReceived.StatusCode.Should().Be(HttpStatusCode.OK);
-        var completedRide = await paymentReceived.Content.ReadFromJsonAsync<ViajeResponse>();
-        completedRide.Should().NotBeNull();
-        completedRide!.Estado.Should().Be(EstadosViaje.Finalizado);
+        paymentReceived.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        using var dailyFinanceResponse = await GetAuthorizedAsync(
+            client,
+            "/api/viajes/finanzas-hoy",
+            driverAuth.Token);
+        dailyFinanceResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var dailyFinance =
+            await dailyFinanceResponse.Content.ReadFromJsonAsync<EstadisticasFinancierasConductorResponse>();
+        dailyFinance.Should().Be(new EstadisticasFinancierasConductorResponse(
+            finalization.MontoTotal,
+            finalization.GananciaNeta,
+            0m));
 
         using var invalidRating = await PostAuthorizedAsync(
             client,
@@ -402,7 +418,7 @@ public sealed class RideFlowTests
         var profile = await update.Content.ReadFromJsonAsync<PerfilUsuarioResponse>();
         profile.Should().Be(new PerfilUsuarioResponse(
             "Ana Ortega", "5557654321", 5.0, 0, null, null, null, null, null, null,
-            "Pendiente", null, false, false, false));
+            "Pendiente", null, false, false, false, null));
 
         using var updatedLogin = await client.PostAsJsonAsync("/api/auth/login", new
         {

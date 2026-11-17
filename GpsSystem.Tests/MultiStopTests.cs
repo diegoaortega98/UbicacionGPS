@@ -65,7 +65,7 @@ public sealed class MultiStopTests
         created.Should().NotBeNull();
         created!.Paradas.Select(parada => parada.Orden).Should().Equal(1, 2);
         created.Pin.Should().MatchRegex("^\\d{4}$");
-        created.Precio.Should().Be(EstimatePrice(origin, firstStop, secondStop, destination));
+        created.Precio.Should().Be(EstimatePrice(origin, firstStop, secondStop, destination) + 4_000m);
         created.Precio.Should().BeGreaterThan(EstimatePrice(origin, destination));
 
         using var tripResponse = await GetAuthorizedAsync(client, account.Token, $"/api/viajes/{created.Id}");
