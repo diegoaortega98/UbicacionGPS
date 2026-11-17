@@ -5,7 +5,6 @@ using GpsSystem.Api.Data;
 using GpsSystem.Api.Models;
 using GpsSystem.Api.Services;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +17,7 @@ public class AuthController(
     UserManager<Usuario> userManager,
     ITokenService tokenService,
     AppDbContext dbContext,
-    IWebHostEnvironment environment) : ControllerBase
+    IEmailService emailService) : ControllerBase
 {
     [HttpPost("register")]
     [ProducesResponseType<AuthResponse>(StatusCodes.Status201Created)]
@@ -149,10 +148,10 @@ public class AuthController(
                     detail: string.Join("; ", resultado.Errors.Select(error => error.Description)));
             }
 
-            if (environment.IsDevelopment())
-            {
-                Console.WriteLine($"Código de restablecimiento para {usuario.Email}: {codigo}");
-            }
+            await emailService.EnviarCodigoRecuperacionAsync(
+                usuario.Email!,
+                codigo,
+                cancellationToken);
         }
 
         return Ok(new RestablecimientoContrasenaResponse(
@@ -226,7 +225,22 @@ public class AuthController(
                 usuario.Nombre,
                 usuario.Telefono,
                 usuario.PromedioCalificacion,
-                usuario.TotalCalificaciones))
+                usuario.TotalCalificaciones,
+                usuario.DireccionCasa,
+                usuario.LatCasa,
+                usuario.LngCasa,
+                usuario.DireccionTrabajo,
+                usuario.LatTrabajo,
+                usuario.LngTrabajo,
+                usuario.EstadoVerificacion == EstadoVerificacionConductor.Aprobado
+                    ? "Aprobado"
+                    : usuario.EstadoVerificacion == EstadoVerificacionConductor.Rechazado
+                        ? "Rechazado"
+                        : "Pendiente",
+                usuario.MotivoRechazo,
+                usuario.UrlLicencia != null,
+                usuario.UrlSOAT != null,
+                usuario.UrlTarjetaPropiedad != null))
             .SingleOrDefaultAsync(cancellationToken);
         return perfil is null ? NotFound() : Ok(perfil);
     }
@@ -311,10 +325,84 @@ public class AuthController(
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return Ok(new PerfilUsuarioResponse(
+        return Ok(CrearPerfilResponse(usuario));
+    }
+
+    [HttpPut("lugares-favoritos")]
+    [Authorize]
+    [ProducesResponseType<PerfilUsuarioResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<PerfilUsuarioResponse>> ActualizarLugaresFavoritos(
+        [FromBody] ActualizarLugaresFavoritosRequest request,
+        CancellationToken cancellationToken)
+    {
+        var usuarioId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(usuarioId))
+        {
+            return Unauthorized();
+        }
+
+        if (!LugarFavoritoEsValido(request.DireccionCasa, request.LatCasa, request.LngCasa)
+            || !LugarFavoritoEsValido(request.DireccionTrabajo, request.LatTrabajo, request.LngTrabajo))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Cada lugar debe incluir dirección, latitud y longitud, o dejarse vacío."
+            });
+        }
+
+        var usuario = await userManager.FindByIdAsync(usuarioId);
+        if (usuario is null)
+        {
+            return NotFound();
+        }
+
+        usuario.DireccionCasa = NormalizarDireccion(request.DireccionCasa);
+        usuario.LatCasa = usuario.DireccionCasa is null ? null : request.LatCasa;
+        usuario.LngCasa = usuario.DireccionCasa is null ? null : request.LngCasa;
+        usuario.DireccionTrabajo = NormalizarDireccion(request.DireccionTrabajo);
+        usuario.LatTrabajo = usuario.DireccionTrabajo is null ? null : request.LatTrabajo;
+        usuario.LngTrabajo = usuario.DireccionTrabajo is null ? null : request.LngTrabajo;
+
+        var updateResult = await userManager.UpdateAsync(usuario);
+        if (!updateResult.Succeeded)
+        {
+            return Problem(
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "No se pudieron actualizar los lugares favoritos.",
+                detail: string.Join("; ", updateResult.Errors.Select(error => error.Description)));
+        }
+
+        return Ok(CrearPerfilResponse(usuario));
+    }
+
+    private static bool LugarFavoritoEsValido(string? direccion, double? latitud, double? longitud)
+    {
+        var tieneDireccion = !string.IsNullOrWhiteSpace(direccion);
+        return tieneDireccion == (latitud.HasValue && longitud.HasValue)
+            && latitud.HasValue == longitud.HasValue;
+    }
+
+    private static string? NormalizarDireccion(string? direccion) =>
+        string.IsNullOrWhiteSpace(direccion) ? null : direccion.Trim();
+
+    private static PerfilUsuarioResponse CrearPerfilResponse(Usuario usuario) =>
+        new(
             usuario.Nombre,
             usuario.Telefono,
             usuario.PromedioCalificacion,
-            usuario.TotalCalificaciones));
-    }
+            usuario.TotalCalificaciones,
+            usuario.DireccionCasa,
+            usuario.LatCasa,
+            usuario.LngCasa,
+            usuario.DireccionTrabajo,
+            usuario.LatTrabajo,
+            usuario.LngTrabajo,
+            usuario.EstadoVerificacion.ToString(),
+            usuario.MotivoRechazo,
+            usuario.UrlLicencia is not null,
+            usuario.UrlSOAT is not null,
+            usuario.UrlTarjetaPropiedad is not null);
 }

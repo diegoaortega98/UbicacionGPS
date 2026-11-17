@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#123B63">
+    <link rel="icon" type="image/png" href="/logo.png">
     <title>Panel de Administrador | UbicacionGPS</title>
     <style>
         :root {
@@ -37,6 +38,19 @@
             font-size: 20px;
         }
 
+        .admin-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .app-logo {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
         .header-actions {
             display: flex;
             gap: 8px;
@@ -51,6 +65,84 @@
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
             gap: 16px;
+        }
+
+        .admin-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #d5dee7;
+        }
+
+        .admin-tab {
+            border: 0;
+            border-bottom: 3px solid transparent;
+            border-radius: 0;
+            background: transparent;
+        }
+
+        .admin-tab[aria-selected="true"] {
+            border-bottom-color: #123b63;
+            color: #123b63;
+        }
+
+        .pending-drivers-heading,
+        .pending-driver-actions,
+        .pending-driver-documents {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pending-drivers-heading {
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .pending-drivers-heading h2 {
+            margin: 0;
+            color: #123b63;
+            font-size: 19px;
+        }
+
+        #pending-drivers-list {
+            display: grid;
+            gap: 12px;
+        }
+
+        .pending-driver-card {
+            padding: 16px;
+            border: 1px solid #d5dee7;
+            border-radius: 10px;
+            background: #fff;
+        }
+
+        .pending-driver-card h3 {
+            margin: 0 0 6px;
+            color: #123b63;
+        }
+
+        .pending-driver-card p {
+            margin: 4px 0;
+            overflow-wrap: anywhere;
+        }
+
+        .pending-driver-documents,
+        .pending-driver-actions {
+            margin-top: 12px;
+        }
+
+        .pending-driver-actions .approve-driver {
+            border-color: #285d3b;
+            background: #285d3b;
+            color: #fff;
+        }
+
+        .pending-driver-actions .reject-driver {
+            border-color: #b71c1c;
+            background: #b71c1c;
+            color: #fff;
         }
 
         .metric-card {
@@ -80,6 +172,73 @@
             min-height: 24px;
             margin: 0 0 16px;
             color: #536477;
+        }
+
+        #pending-drivers-status.error {
+            color: #9c2c26;
+        }
+
+        #pending-drivers-status.success {
+            color: #285d3b;
+        }
+
+        .promo-management {
+            margin-top: 24px;
+            padding: 20px;
+            border: 1px solid #d5dee7;
+            border-radius: 12px;
+            background: #fff;
+            box-shadow: 0 5px 18px rgb(18 59 99 / 9%);
+        }
+
+        .promo-management h2 {
+            margin: 0 0 14px;
+            color: #123b63;
+            font-size: 18px;
+        }
+
+        .promo-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            align-items: end;
+            gap: 12px;
+        }
+
+        .promo-form label {
+            display: grid;
+            gap: 6px;
+            color: #344356;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .promo-form input {
+            width: 100%;
+            min-height: 38px;
+            padding: 8px;
+            border: 1px solid #bdc9d5;
+            border-radius: 7px;
+            font: inherit;
+        }
+
+        .promo-form button {
+            border-color: #123b63;
+            background: #123b63;
+            color: #fff;
+        }
+
+        #promo-status {
+            min-height: 20px;
+            margin: 12px 0 0;
+            font-size: 13px;
+        }
+
+        #promo-status.success {
+            color: #285d3b;
+        }
+
+        #promo-status.error {
+            color: #9c2c26;
         }
 
         a,
@@ -113,35 +272,72 @@
 </head>
 <body>
     <header>
-        <h1>UbicacionGPS · Panel de Administrador</h1>
+        <div class="admin-brand">
+            <img src="/logo.png" class="app-logo" alt="UbicacionGPS">
+            <h1>UbicacionGPS · Panel de Administrador</h1>
+        </div>
         <div class="header-actions">
             <button id="refresh-dashboard" type="button">Actualizar</button>
             <button id="admin-logout" type="button">Salir</button>
         </div>
     </header>
     <main>
-        <p id="dashboard-status" role="status" aria-live="polite">Cargando estadísticas...</p>
-        <section class="dashboard-grid" aria-label="Estadísticas del negocio">
-            <article class="metric-card">
-                <h2>Total de viajes finalizados</h2>
-                <output id="total-viajes">—</output>
-            </article>
-            <article class="metric-card">
-                <h2>Comisiones totales</h2>
-                <output id="comisiones-totales">—</output>
-            </article>
-            <article class="metric-card">
-                <h2>Viajes finalizados hoy</h2>
-                <output id="viajes-hoy">—</output>
-            </article>
-            <article class="metric-card">
-                <h2>Conductores activos</h2>
-                <output id="conductores-activos">—</output>
-            </article>
-            <article class="metric-card">
-                <h2>Comisiones generadas hoy</h2>
-                <output id="recaudado-hoy">—</output>
-            </article>
+        <nav class="admin-tabs" role="tablist" aria-label="Secciones de administración">
+            <button id="dashboard-tab-button" class="admin-tab" type="button" role="tab" aria-selected="true" aria-controls="dashboard-view">
+                Resumen
+            </button>
+            <button id="pending-drivers-tab-button" class="admin-tab" type="button" role="tab" aria-selected="false" aria-controls="pending-drivers-view">
+                Conductores Pendientes
+            </button>
+        </nav>
+        <section id="dashboard-view" role="tabpanel" aria-labelledby="dashboard-tab-button">
+            <p id="dashboard-status" role="status" aria-live="polite">Cargando estadísticas...</p>
+            <section class="dashboard-grid" aria-label="Estadísticas del negocio">
+                <article class="metric-card">
+                    <h2>Total de viajes finalizados</h2>
+                    <output id="total-viajes">—</output>
+                </article>
+                <article class="metric-card">
+                    <h2>Comisiones totales</h2>
+                    <output id="comisiones-totales">—</output>
+                </article>
+                <article class="metric-card">
+                    <h2>Viajes finalizados hoy</h2>
+                    <output id="viajes-hoy">—</output>
+                </article>
+                <article class="metric-card">
+                    <h2>Conductores activos</h2>
+                    <output id="conductores-activos">—</output>
+                </article>
+                <article class="metric-card">
+                    <h2>Comisiones generadas hoy</h2>
+                    <output id="recaudado-hoy">—</output>
+                </article>
+            </section>
+            <section class="promo-management" aria-labelledby="promo-title">
+                <h2 id="promo-title">Crear código de descuento</h2>
+                <form id="promo-form" class="promo-form">
+                    <label for="promo-code">Código
+                        <input id="promo-code" name="codigo" type="text" minlength="3" maxlength="32" pattern="[A-Za-z0-9_-]+" required>
+                    </label>
+                    <label for="promo-percent">Porcentaje de descuento
+                        <input id="promo-percent" name="porcentajeDescuento" type="number" min="0.01" max="100" step="0.01" required>
+                    </label>
+                    <label for="promo-expiration">Fecha de expiración (opcional)
+                        <input id="promo-expiration" name="fechaExpiracion" type="datetime-local">
+                    </label>
+                    <button type="submit">Crear cupón</button>
+                </form>
+                <p id="promo-status" role="status" aria-live="polite"></p>
+            </section>
+        </section>
+        <section id="pending-drivers-view" role="tabpanel" aria-labelledby="pending-drivers-tab-button" hidden>
+            <div class="pending-drivers-heading">
+                <h2>Conductores Pendientes</h2>
+                <button id="refresh-pending-drivers" type="button">Actualizar lista</button>
+            </div>
+            <p id="pending-drivers-status" role="status" aria-live="polite">Selecciona esta pestaña para cargar solicitudes.</p>
+            <div id="pending-drivers-list"></div>
         </section>
     </main>
 </body>

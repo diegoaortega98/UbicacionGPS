@@ -1,5 +1,8 @@
 using GpsSystem.Api.Data;
 using GpsSystem.Api.Models;
+using GpsSystem.Api.Services;
+using System.Collections.Concurrent;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -58,6 +61,11 @@ public sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<DbContextOptions<AppDbContext>>();
             services.RemoveAll<AppDbContext>();
             services.AddDbContext<AppDbContext>(options => options.UseSqlite(_connection));
+            services.RemoveAll<IDocumentoConductorStorage>();
+            services.AddSingleton<IDocumentoConductorStorage, InMemoryDocumentoConductorStorage>();
+            services.RemoveAll<IEmailService>();
+            services.AddSingleton<TestEmailService>();
+            services.AddSingleton<IEmailService>(provider => provider.GetRequiredService<TestEmailService>());
         });
     }
 
@@ -80,6 +88,75 @@ public sealed class TestWebApplicationFactory : WebApplicationFactory<Program>
                         string.Join("; ", result.Errors.Select(error => error.Description)));
                 }
             }
+        }
+    }
+
+    internal sealed class InMemoryDocumentoConductorStorage : IDocumentoConductorStorage
+    {
+        private readonly Dictionary<string, byte[]> _archivos = new(StringComparer.Ordinal);
+
+        public async Task<string> GuardarAsync(IFormFile archivo, CancellationToken cancellationToken)
+        {
+            await using var contenido = new MemoryStream();
+            await archivo.CopyToAsync(contenido, cancellationToken);
+            var extension = Path.GetExtension(archivo.FileName).ToLowerInvariant();
+            var clave = $"{Guid.NewGuid():N}{extension}";
+            _archivos[clave] = contenido.ToArray();
+            return clave;
+        }
+
+        public Task<DocumentoConductorArchivo?> AbrirAsync(
+            string? clave,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (clave is null || !_archivos.TryGetValue(clave, out var contenido))
+            {
+                return Task.FromResult<DocumentoConductorArchivo?>(null);
+            }
+
+            var contentType = Path.GetExtension(clave).ToLowerInvariant() switch
+            {
+                ".pdf" => "application/pdf",
+                ".png" => "image/png",
+                _ => "image/jpeg"
+            };
+            return Task.FromResult<DocumentoConductorArchivo?>(
+                new DocumentoConductorArchivo(new MemoryStream(contenido, writable: false), contentType, clave));
+        }
+
+        public Task EliminarAsync(string? clave, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (clave is not null)
+            {
+                _archivos.Remove(clave);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> ExisteAsync(string? clave, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(clave is not null && _archivos.ContainsKey(clave));
+        }
+    }
+
+    internal sealed class TestEmailService : IEmailService
+    {
+        private readonly ConcurrentQueue<(string Email, string Codigo)> _correos = new();
+
+        public IReadOnlyCollection<(string Email, string Codigo)> Correos => _correos.ToArray();
+
+        public Task EnviarCodigoRecuperacionAsync(
+            string email,
+            string codigo,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _correos.Enqueue((email, codigo));
+            return Task.CompletedTask;
         }
     }
 

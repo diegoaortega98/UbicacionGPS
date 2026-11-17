@@ -65,7 +65,18 @@ public sealed record PerfilUsuarioResponse(
     string Nombre,
     string Telefono,
     double PromedioCalificacion,
-    int TotalCalificaciones);
+    int TotalCalificaciones,
+    string? DireccionCasa,
+    double? LatCasa,
+    double? LngCasa,
+    string? DireccionTrabajo,
+    double? LatTrabajo,
+    double? LngTrabajo,
+    string EstadoVerificacion,
+    string? MotivoRechazo,
+    bool TieneLicencia,
+    bool TieneSoat,
+    bool TieneTarjetaPropiedad);
 
 /// <summary>Datos que se pueden actualizar en el perfil del usuario autenticado.</summary>
 public sealed record ActualizarPerfilRequest
@@ -83,8 +94,119 @@ public sealed record ActualizarPerfilRequest
     public string? PasswordNueva { get; init; }
 }
 
+/// <summary>Direcciones y coordenadas de los lugares favoritos del usuario autenticado.</summary>
+public sealed record ActualizarLugaresFavoritosRequest
+{
+    [StringLength(300)]
+    public string? DireccionCasa { get; init; }
+
+    [Range(-90, 90)]
+    public double? LatCasa { get; init; }
+
+    [Range(-180, 180)]
+    public double? LngCasa { get; init; }
+
+    [StringLength(300)]
+    public string? DireccionTrabajo { get; init; }
+
+    [Range(-90, 90)]
+    public double? LatTrabajo { get; init; }
+
+    [Range(-180, 180)]
+    public double? LngTrabajo { get; init; }
+}
+
 /// <summary>Ganancias netas acumuladas por el conductor en viajes finalizados.</summary>
 public sealed record GananciasResponse(decimal GananciasAcumuladas);
+
+/// <summary>Desglose financiero de un viaje finalizado para el historial del conductor.</summary>
+public sealed record HistorialViajeConductorResponse(
+    Guid ViajeId,
+    DateTimeOffset Fecha,
+    decimal MontoTotal,
+    decimal Comision,
+    decimal GananciaNeta);
+
+/// <summary>Datos de un viaje finalizado incluidos en el historial del pasajero.</summary>
+public sealed record HistorialViajePasajeroResponse(
+    Guid ViajeId,
+    DateTimeOffset Fecha,
+    double OrigenLat,
+    double OrigenLng,
+    double DestinoLat,
+    double DestinoLng,
+    decimal MontoPagado,
+    string? ConductorNombre);
+
+/// <summary>Estadísticas acumuladas de viajes finalizados de un pasajero.</summary>
+public sealed record EstadisticasPasajeroResponse(int TotalViajes, decimal TotalGastado);
+
+/// <summary>Archivo y tipo de documento de identidad que carga un conductor.</summary>
+public sealed record SubirDocumentoConductorRequest
+{
+    [Required]
+    public required IFormFile Archivo { get; init; }
+
+    [Required, RegularExpression("^(Licencia|SOAT|TarjetaPropiedad)$")]
+    public required string TipoDocumento { get; init; }
+}
+
+/// <summary>Estado de verificación y documentos presentes del conductor autenticado.</summary>
+public sealed record EstadoVerificacionConductorResponse(
+    string EstadoVerificacion,
+    string? MotivoRechazo,
+    bool TieneLicencia,
+    bool TieneSoat,
+    bool TieneTarjetaPropiedad);
+
+/// <summary>Conductor con documentos pendientes de revisión administrativa.</summary>
+public sealed record ConductorPendienteResponse(
+    string Id,
+    string Nombre,
+    string Email,
+    string Telefono,
+    string UrlLicencia,
+    string UrlSOAT,
+    string UrlTarjetaPropiedad);
+
+/// <summary>Decisión administrativa para aprobar o rechazar la verificación de un conductor.</summary>
+public sealed record VerificarConductorRequest
+{
+    public required bool Aprobado { get; init; }
+
+    [StringLength(500)]
+    public string? MotivoRechazo { get; init; }
+}
+
+/// <summary>Datos necesarios para validar un código promocional.</summary>
+public sealed record ValidarPromocionRequest
+{
+    [Required, StringLength(32, MinimumLength = 3)]
+    public required string Codigo { get; init; }
+}
+
+/// <summary>Porcentaje de descuento de un código promocional vigente.</summary>
+public sealed record ValidarPromocionResponse(decimal PorcentajeDescuento);
+
+/// <summary>Datos para crear un código promocional de administrador.</summary>
+public sealed record CrearPromocionRequest
+{
+    [Required, StringLength(32, MinimumLength = 3), RegularExpression(@"^[A-Za-z0-9_-]+$")]
+    public required string Codigo { get; init; }
+
+    [Range(0.01, 100)]
+    public required decimal PorcentajeDescuento { get; init; }
+
+    public DateTimeOffset? FechaExpiracion { get; init; }
+}
+
+/// <summary>Datos de un código promocional.</summary>
+public sealed record PromocionResponse(
+    Guid Id,
+    string Codigo,
+    decimal PorcentajeDescuento,
+    bool EstaActiva,
+    DateTimeOffset? FechaExpiracion);
 
 /// <summary>Datos de origen y destino para solicitar un viaje.</summary>
 public sealed record SolicitarViajeRequest
@@ -104,7 +226,26 @@ public sealed record SolicitarViajeRequest
     [Required]
     [Range(-180, 180)]
     public required double DestinoLng { get; init; }
+
+    [StringLength(32)]
+    public string? CodigoPromo { get; init; }
+
+    [MaxLength(3)]
+    public List<ParadaRequest>? Paradas { get; init; }
 }
+
+/// <summary>Coordenadas de una parada intermedia del viaje.</summary>
+public sealed record ParadaRequest
+{
+    [Range(-90, 90)]
+    public required double Latitud { get; init; }
+
+    [Range(-180, 180)]
+    public required double Longitud { get; init; }
+}
+
+/// <summary>Parada intermedia guardada en el orden de recorrido del viaje.</summary>
+public sealed record ParadaResponse(int Orden, double Latitud, double Longitud);
 
 /// <summary>Confirmación del viaje solicitado; el PIN solo se entrega al pasajero.</summary>
 public sealed record SolicitudViajeResponse(
@@ -112,7 +253,8 @@ public sealed record SolicitudViajeResponse(
     string Estado,
     string Pin,
     decimal Precio,
-    DateTimeOffset FechaCreacion);
+    DateTimeOffset FechaCreacion,
+    IReadOnlyList<ParadaResponse> Paradas);
 
 /// <summary>Desglose del cobro al finalizar un viaje, pendiente de confirmar su recepción.</summary>
 public sealed record FinalizacionViajeResponse(
@@ -140,7 +282,8 @@ public sealed record ViajeResponse(
     string? ConductorNombre,
     string? ConductorTelefono,
     int? Calificacion,
-    string? ComentarioCalificacion);
+    string? ComentarioCalificacion,
+    IReadOnlyList<ParadaResponse> Paradas);
 
 /// <summary>Calificación de estrellas y comentario opcional de un viaje finalizado.</summary>
 public sealed record CalificarViajeRequest

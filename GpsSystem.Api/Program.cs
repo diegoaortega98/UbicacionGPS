@@ -91,6 +91,9 @@ builder.Services.AddIdentityCore<Usuario>(options =>
     .AddDefaultTokenProviders();
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IViajeService, ViajeService>();
+builder.Services.AddScoped<IPromocionService, PromocionService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddSingleton<IDocumentoConductorStorage, LocalDocumentoConductorStorage>();
 builder.Services.AddSingleton<IConductoresActivosTracker, ConductoresActivosTracker>();
 builder.Services.AddSingleton<FirebaseMessagingProvider>();
 builder.Services.AddScoped<NotificacionService>();
@@ -240,19 +243,47 @@ if (!app.Environment.IsEnvironment("Testing"))
             await adminTransaction.CommitAsync();
             logger.LogInformation("Se creó el usuario administrador {AdminEmail}.", adminEmail);
         }
-        else if (!await userManager.IsInRoleAsync(admin, RolesUsuario.Admin))
+        else
         {
-            throw new InvalidOperationException(
-                $"El correo {adminEmail} ya existe sin el rol Admin; no se elevaron sus privilegios automáticamente.");
-        }
-        else if (admin.Rol != RolesUsuario.Admin)
-        {
-            admin.Rol = RolesUsuario.Admin;
-            var updateResult = await userManager.UpdateAsync(admin);
-            if (!updateResult.Succeeded)
+            if (!await userManager.IsInRoleAsync(admin, RolesUsuario.Admin))
             {
                 throw new InvalidOperationException(
-                    $"No se pudo sincronizar el rol del administrador: {string.Join(", ", updateResult.Errors.Select(error => error.Description))}");
+                    $"El correo {adminEmail} ya existe sin el rol Admin; no se elevaron sus privilegios automáticamente.");
+            }
+
+            if (admin.Rol != RolesUsuario.Admin)
+            {
+                admin.Rol = RolesUsuario.Admin;
+                var updateResult = await userManager.UpdateAsync(admin);
+                if (!updateResult.Succeeded)
+                {
+                    throw new InvalidOperationException(
+                        $"No se pudo sincronizar el rol del administrador: {string.Join(", ", updateResult.Errors.Select(error => error.Description))}");
+                }
+            }
+
+            if (builder.Environment.IsDevelopment())
+            {
+                await using var adminTransaction = await dbContext.Database.BeginTransactionAsync();
+                if (await userManager.HasPasswordAsync(admin))
+                {
+                    var removeResult = await userManager.RemovePasswordAsync(admin);
+                    if (!removeResult.Succeeded)
+                    {
+                        throw new InvalidOperationException(
+                            $"No se pudo quitar la contraseña actual del administrador: {string.Join(", ", removeResult.Errors.Select(error => error.Description))}");
+                    }
+                }
+
+                var addResult = await userManager.AddPasswordAsync(admin, adminPassword);
+                if (!addResult.Succeeded)
+                {
+                    throw new InvalidOperationException(
+                        $"No se pudo actualizar la contraseña del administrador: {string.Join(", ", addResult.Errors.Select(error => error.Description))}");
+                }
+
+                await adminTransaction.CommitAsync();
+                logger.LogInformation("Se actualizó la contraseña del administrador {AdminEmail} en Development.", adminEmail);
             }
         }
     }

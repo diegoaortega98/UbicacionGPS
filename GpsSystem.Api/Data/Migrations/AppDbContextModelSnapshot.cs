@@ -73,6 +73,34 @@ namespace GpsSystem.Api.Data.Migrations
                     b.ToTable("Mensajes");
                 });
 
+            modelBuilder.Entity("GpsSystem.Api.Models.ParadaViaje", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<double>("Latitud")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("Longitud")
+                        .HasColumnType("double precision");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ViajeId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ViajeId", "Orden")
+                        .IsUnique();
+
+                    b.ToTable("ParadasViaje");
+                });
+
             modelBuilder.Entity("GpsSystem.Api.Models.PerfilConductor", b =>
                 {
                     b.Property<string>("UsuarioId")
@@ -94,6 +122,35 @@ namespace GpsSystem.Api.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("PerfilesConductores");
+                });
+
+            modelBuilder.Entity("GpsSystem.Api.Models.Promocion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Codigo")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<bool>("EstaActiva")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("FechaExpiracion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("PorcentajeDescuento")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Codigo")
+                        .IsUnique();
+
+                    b.ToTable("Promociones");
                 });
 
             modelBuilder.Entity("GpsSystem.Api.Models.TokenNotificacion", b =>
@@ -201,6 +258,14 @@ namespace GpsSystem.Api.Data.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("text");
 
+                    b.Property<string>("DireccionCasa")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("DireccionTrabajo")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
@@ -208,11 +273,30 @@ namespace GpsSystem.Api.Data.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("EstadoVerificacion")
+                        .HasColumnType("integer");
+
+                    b.Property<double?>("LatCasa")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("LatTrabajo")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("LngCasa")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("LngTrabajo")
+                        .HasColumnType("double precision");
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MotivoRechazo")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<string>("Nombre")
                         .IsRequired()
@@ -268,6 +352,18 @@ namespace GpsSystem.Api.Data.Migrations
 
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("UrlLicencia")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("UrlSOAT")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("UrlTarjetaPropiedad")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<string>("UserName")
                         .HasMaxLength(256)
@@ -339,11 +435,16 @@ namespace GpsSystem.Api.Data.Migrations
                     b.Property<decimal>("Precio")
                         .HasColumnType("numeric");
 
+                    b.Property<Guid?>("PromocionId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ConductorId");
 
                     b.HasIndex("PasajeroId");
+
+                    b.HasIndex("PromocionId");
 
                     b.HasIndex("Estado", "FechaCreacion");
 
@@ -501,6 +602,17 @@ namespace GpsSystem.Api.Data.Migrations
                     b.Navigation("Viaje");
                 });
 
+            modelBuilder.Entity("GpsSystem.Api.Models.ParadaViaje", b =>
+                {
+                    b.HasOne("GpsSystem.Api.Models.Viaje", "Viaje")
+                        .WithMany("Paradas")
+                        .HasForeignKey("ViajeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Viaje");
+                });
+
             modelBuilder.Entity("GpsSystem.Api.Models.PerfilConductor", b =>
                 {
                     b.HasOne("GpsSystem.Api.Models.Usuario", "Usuario")
@@ -558,9 +670,16 @@ namespace GpsSystem.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("GpsSystem.Api.Models.Promocion", "Promocion")
+                        .WithMany()
+                        .HasForeignKey("PromocionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Conductor");
 
                     b.Navigation("Pasajero");
+
+                    b.Navigation("Promocion");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -627,6 +746,8 @@ namespace GpsSystem.Api.Data.Migrations
             modelBuilder.Entity("GpsSystem.Api.Models.Viaje", b =>
                 {
                     b.Navigation("Mensajes");
+
+                    b.Navigation("Paradas");
                 });
 #pragma warning restore 612, 618
         }

@@ -5,14 +5,38 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GpsSystem.Api.Services;
 
-public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenService) : IViajeService
+public sealed class ViajeService(
+    AppDbContext dbContext,
+    ITokenService tokenService,
+    IPromocionService promocionService) : IViajeService
 {
     public async Task<SolicitudViajeResponse> SolicitarAsync(
         string pasajeroId,
         SolicitarViajeRequest request,
         CancellationToken cancellationToken)
     {
+        if (request.Paradas?.Count > 3)
+        {
+            throw new ArgumentException("Un viaje puede incluir como máximo tres paradas.");
+        }
+
         var pin = RandomNumberGenerator.GetInt32(0, 10_000).ToString("D4");
+        Promocion? promocion = null;
+        if (!string.IsNullOrWhiteSpace(request.CodigoPromo))
+        {
+            promocion = await promocionService.ObtenerValidaAsync(request.CodigoPromo, cancellationToken)
+                ?? throw new ArgumentException("El código promocional no existe, está inactivo o expiró.");
+        }
+
+        var precio = CalcularTarifa(request);
+        if (promocion is not null)
+        {
+            precio = decimal.Round(
+                precio * (100m - promocion.PorcentajeDescuento) / 100m,
+                2,
+                MidpointRounding.AwayFromZero);
+        }
+
         var viaje = new Viaje
         {
             PasajeroId = pasajeroId,
@@ -21,16 +45,42 @@ public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenServ
             DestinoLat = request.DestinoLat,
             DestinoLng = request.DestinoLng,
             Pin = tokenService.ProtegerPin(pin),
-            Precio = CalcularTarifa(request)
+            Precio = precio,
+            PromocionId = promocion?.Id,
+            Paradas = (request.Paradas ?? [])
+                .Select((parada, index) => new ParadaViaje
+                {
+                    Latitud = parada.Latitud,
+                    Longitud = parada.Longitud,
+                    Orden = index + 1
+                })
+                .ToList()
         };
 
         dbContext.Viajes.Add(viaje);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new SolicitudViajeResponse(viaje.Id, viaje.Estado, pin, viaje.Precio, viaje.FechaCreacion);
+        return new SolicitudViajeResponse(
+            viaje.Id,
+            viaje.Estado,
+            pin,
+            viaje.Precio,
+            viaje.FechaCreacion,
+            MapearParadas(viaje.Paradas));
     }
 
     public async Task<ViajeResponse> AceptarAsync(Guid viajeId, string conductorId, CancellationToken cancellationToken)
     {
+        var verificado = await dbContext.Users.AsNoTracking()
+            .AnyAsync(usuario => usuario.Id == conductorId
+                && usuario.Rol == RolesUsuario.Conductor
+                && usuario.EstadoVerificacion == EstadoVerificacionConductor.Aprobado,
+                cancellationToken);
+        if (!verificado)
+        {
+            throw new InvalidOperationException(
+                "Tu cuenta debe tener los documentos aprobados antes de aceptar viajes.");
+        }
+
         if (!await dbContext.PerfilesConductores.AnyAsync(perfil => perfil.UsuarioId == conductorId, cancellationToken))
         {
             throw new InvalidOperationException("El conductor debe completar su perfil antes de aceptar viajes.");
@@ -269,12 +319,117 @@ public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenServ
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<HistorialViajeConductorResponse>> ObtenerHistorialConductorAsync(
+        string conductorId,
+        CancellationToken cancellationToken)
+    {
+        var historial = dbContext.Viajes.AsNoTracking()
+            .Where(viaje => viaje.ConductorId == conductorId
+                && viaje.Estado == EstadosViaje.Finalizado);
+        if (dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            var viajes = await historial.ToListAsync(cancellationToken);
+            return viajes
+                .OrderByDescending(viaje => viaje.FechaFinalizacion ?? viaje.FechaCreacion)
+                .Take(50)
+                .Select(viaje => new HistorialViajeConductorResponse(
+                    viaje.Id,
+                    viaje.FechaFinalizacion ?? viaje.FechaCreacion,
+                    viaje.Precio,
+                    viaje.ComisionPlataforma,
+                    viaje.Precio - viaje.ComisionPlataforma))
+                .ToArray();
+        }
+
+        return await historial
+            .OrderByDescending(viaje => viaje.FechaFinalizacion ?? viaje.FechaCreacion)
+            .Take(50)
+            .Select(viaje => new HistorialViajeConductorResponse(
+                viaje.Id,
+                viaje.FechaFinalizacion ?? viaje.FechaCreacion,
+                viaje.Precio,
+                viaje.ComisionPlataforma,
+                viaje.Precio - viaje.ComisionPlataforma))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<HistorialViajePasajeroResponse>> ObtenerHistorialPasajeroAsync(
+        string pasajeroId,
+        CancellationToken cancellationToken)
+    {
+        var historial = dbContext.Viajes.AsNoTracking()
+            .Where(viaje => viaje.PasajeroId == pasajeroId
+                && viaje.Estado == EstadosViaje.Finalizado)
+            .Select(viaje => new
+            {
+                viaje.Id,
+                Fecha = viaje.FechaFinalizacion ?? viaje.FechaCreacion,
+                viaje.OrigenLat,
+                viaje.OrigenLng,
+                viaje.DestinoLat,
+                viaje.DestinoLng,
+                MontoPagado = viaje.Precio,
+                ConductorNombre = viaje.Conductor == null ? null : viaje.Conductor.Nombre
+            });
+
+        if (dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            var viajes = await historial.ToListAsync(cancellationToken);
+            return viajes
+                .OrderByDescending(viaje => viaje.Fecha)
+                .Take(50)
+                .Select(viaje => new HistorialViajePasajeroResponse(
+                    viaje.Id,
+                    viaje.Fecha,
+                    viaje.OrigenLat,
+                    viaje.OrigenLng,
+                    viaje.DestinoLat,
+                    viaje.DestinoLng,
+                    viaje.MontoPagado,
+                    viaje.ConductorNombre))
+                .ToArray();
+        }
+
+        return await historial
+            .OrderByDescending(viaje => viaje.Fecha)
+            .Take(50)
+            .Select(viaje => new HistorialViajePasajeroResponse(
+                viaje.Id,
+                viaje.Fecha,
+                viaje.OrigenLat,
+                viaje.OrigenLng,
+                viaje.DestinoLat,
+                viaje.DestinoLng,
+                viaje.MontoPagado,
+                viaje.ConductorNombre))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<EstadisticasPasajeroResponse> ObtenerEstadisticasPasajeroAsync(
+        string pasajeroId,
+        CancellationToken cancellationToken)
+    {
+        var viajes = dbContext.Viajes.AsNoTracking()
+            .Where(viaje => viaje.PasajeroId == pasajeroId
+                && viaje.Estado == EstadosViaje.Finalizado);
+        if (dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            var importes = await viajes.Select(viaje => viaje.Precio).ToListAsync(cancellationToken);
+            return new EstadisticasPasajeroResponse(importes.Count, importes.Sum());
+        }
+
+        var totalViajes = await viajes.CountAsync(cancellationToken);
+        var totalGastado = await viajes.SumAsync(viaje => (decimal?)viaje.Precio, cancellationToken) ?? 0m;
+        return new EstadisticasPasajeroResponse(totalViajes, totalGastado);
+    }
+
     public async Task<IReadOnlyList<ViajeResponse>> ObtenerDisponiblesAsync(CancellationToken cancellationToken)
     {
         var limiteReciente = DateTimeOffset.UtcNow.AddMinutes(-10);
         var esSqlite = dbContext.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite";
         var consulta = dbContext.Viajes.AsNoTracking()
             .Include(viaje => viaje.Pasajero)
+            .Include(viaje => viaje.Paradas)
             .Where(viaje => viaje.Estado == EstadosViaje.Solicitado);
         if (esSqlite)
         {
@@ -302,7 +457,8 @@ public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenServ
         IQueryable<Viaje> viajes = dbContext.Viajes.AsNoTracking()
             .Include(viaje => viaje.Pasajero)
             .Include(viaje => viaje.Conductor)
-                .ThenInclude(conductor => conductor!.PerfilConductor);
+                .ThenInclude(conductor => conductor!.PerfilConductor)
+            .Include(viaje => viaje.Paradas);
         viajes = rol == RolesUsuario.Conductor
             ? viajes.Where(viaje => viaje.ConductorId == usuarioId)
             : viajes.Where(viaje => viaje.PasajeroId == usuarioId);
@@ -320,6 +476,7 @@ public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenServ
             .Include(viaje => viaje.Pasajero)
             .Include(viaje => viaje.Conductor)
                 .ThenInclude(conductor => conductor!.PerfilConductor)
+            .Include(viaje => viaje.Paradas)
             .Where(viaje => (viaje.PasajeroId == usuarioId || viaje.ConductorId == usuarioId)
                 && (viaje.Estado == EstadosViaje.Finalizado || viaje.Estado == EstadosViaje.Cancelado));
 
@@ -346,6 +503,7 @@ public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenServ
             .Include(item => item.Pasajero)
             .Include(item => item.Conductor)
                 .ThenInclude(conductor => conductor!.PerfilConductor)
+            .Include(item => item.Paradas)
             .Where(item => item.Id == viajeId
                 && (item.PasajeroId == usuarioId || item.ConductorId == usuarioId))
             .Select(item => Mapear(item))
@@ -424,6 +582,7 @@ public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenServ
             .Include(viaje => viaje.Pasajero)
             .Include(viaje => viaje.Conductor)
                 .ThenInclude(conductor => conductor!.PerfilConductor)
+            .Include(viaje => viaje.Paradas)
             .Where(viaje => viaje.Id == viajeId)
             .Select(viaje => Mapear(viaje))
             .SingleAsync(cancellationToken);
@@ -444,18 +603,41 @@ public sealed class ViajeService(AppDbContext dbContext, ITokenService tokenServ
                     : viaje.Conductor.Nombre,
             viaje.Conductor == null ? null : viaje.Conductor.Telefono,
             viaje.Calificacion,
-            viaje.ComentarioCalificacion);
+            viaje.ComentarioCalificacion,
+            MapearParadas(viaje.Paradas));
+
+    private static ParadaResponse[] MapearParadas(IEnumerable<ParadaViaje> paradas) =>
+        paradas.OrderBy(parada => parada.Orden)
+            .Select(parada => new ParadaResponse(parada.Orden, parada.Latitud, parada.Longitud))
+            .ToArray();
 
     private static decimal CalcularTarifa(SolicitarViajeRequest request)
     {
         const double earthRadiusKm = 6371;
-        var lat1 = DegreesToRadians(request.OrigenLat);
-        var lat2 = DegreesToRadians(request.DestinoLat);
-        var deltaLat = DegreesToRadians(request.DestinoLat - request.OrigenLat);
-        var deltaLng = DegreesToRadians(request.DestinoLng - request.OrigenLng);
-        var haversine = Math.Pow(Math.Sin(deltaLat / 2), 2)
-            + Math.Cos(lat1) * Math.Cos(lat2) * Math.Pow(Math.Sin(deltaLng / 2), 2);
-        var distanceKm = 2 * earthRadiusKm * Math.Asin(Math.Sqrt(haversine)) * 1.3;
+        var waypoints = new List<(double Latitude, double Longitude)>
+        {
+            (request.OrigenLat, request.OrigenLng)
+        };
+        waypoints.AddRange((request.Paradas ?? [])
+            .Select(parada => (parada.Latitud, parada.Longitud)));
+        waypoints.Add((request.DestinoLat, request.DestinoLng));
+
+        var distanceKm = 0d;
+        for (var index = 1; index < waypoints.Count; index++)
+        {
+            var origin = waypoints[index - 1];
+            var destination = waypoints[index];
+            var latitude1 = DegreesToRadians(origin.Latitude);
+            var latitude2 = DegreesToRadians(destination.Latitude);
+            var deltaLatitude = DegreesToRadians(destination.Latitude - origin.Latitude);
+            var deltaLongitude = DegreesToRadians(destination.Longitude - origin.Longitude);
+            var haversine = Math.Pow(Math.Sin(deltaLatitude / 2), 2)
+                + Math.Cos(latitude1) * Math.Cos(latitude2)
+                * Math.Pow(Math.Sin(deltaLongitude / 2), 2);
+            distanceKm += 2 * earthRadiusKm * Math.Asin(Math.Sqrt(haversine));
+        }
+
+        distanceKm *= 1.3;
         var estimate = 5000m + (decimal)distanceKm * 1800m;
         return decimal.Ceiling(estimate / 500m) * 500m;
     }

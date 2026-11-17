@@ -20,6 +20,19 @@ dotnet run --project .\GpsSystem.Api.csproj
 
 Abre `http://localhost:5023` o la URL local que muestre `dotnet run`.
 
+## Recuperación de contraseña por correo
+
+Para obtener una API Key, crea una cuenta en [SendGrid](https://sendgrid.com/), abre **Settings > API Keys** y genera una clave con permiso **Mail Send**. Verifica también el remitente o dominio configurado en `Email:FromEmail`. No guardes la clave en Git.
+
+En PowerShell local, configura la clave como variable de entorno antes de iniciar la API:
+
+```powershell
+$env:SENDGRID_API_KEY = "tu-api-key-de-sendgrid"
+dotnet run --project .\GpsSystem.Api.csproj
+```
+
+También se puede usar `Email__SendGridApiKey` o `Email:SendGridApiKey` desde la configuración. En Render, configura `SENDGRID_API_KEY` en **Environment**. Si falta la clave en Desarrollo, la API imprime el código de recuperación en la consola; en otros entornos, el envío falla explícitamente.
+
 ## API
 
 - `POST /api/ubicaciones`: guarda `{ "dispositivoId": "vehiculo-01", "latitud": 10.391, "longitud": -75.4794, "velocidad": 35 }` y publica `RecibirUbicacion` en `/gpsHub`.

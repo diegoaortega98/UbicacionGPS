@@ -3,15 +3,28 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#123B63">
+    <meta name="theme-color" content="#0a122a">
+    <link rel="icon" type="image/png" href="/logo.png">
     <title>UbicacionGPS</title>
     <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/icon-192x192.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <main id="map" aria-label="Mapa para solicitar y seguir viajes"></main>
+    <div class="telemetry-status" role="status" aria-label="Estado de telemetría">
+        <span class="telemetry-online"><span class="telemetry-indicator" aria-hidden="true"></span>EN LÍNEA</span>
+        <span class="telemetry-divider" aria-hidden="true">|</span>
+        <span>SEÑAL: <strong>EXCELENTE</strong></span>
+        <span class="telemetry-divider" aria-hidden="true">|</span>
+        <span><strong>18</strong> SATÉLITES</span>
+    </div>
     <section id="pin-banner" class="pin-banner" role="status" aria-live="assertive" hidden>
         <button id="close-pin-banner" class="pin-banner-close" type="button" aria-label="Cerrar aviso">×</button>
         <p>PIN de tu viaje</p>
@@ -20,7 +33,7 @@
     </section>
     <aside class="panel">
         <header class="brand">
-            <div class="brand-mark" aria-hidden="true">G</div>
+            <img src="/logo.png" class="app-logo" alt="UbicacionGPS">
             <div><h1>UbicacionGPS</h1><p>Movilidad inteligente y segura</p></div>
         </header>
 
@@ -68,6 +81,9 @@
 
             <section id="passenger-panel" hidden>
                 <h3>Solicitar un viaje</h3>
+                <button id="open-passenger-history" class="secondary notification-button" type="button">
+                    📋 Mis Viajes
+                </button>
                 <p class="hint">Haz clic en el mapa para seleccionar origen y destino, o usa tu ubicación actual como origen.</p>
                 <div class="city-search">
                     <label for="current-city">Ciudad actual</label>
@@ -93,6 +109,25 @@
                     <input id="destination-lat" type="hidden">
                     <input id="destination-lng" type="hidden">
                 </div>
+                <div id="route-stops-list" class="route-stops-list"></div>
+                <button id="add-route-stop" class="secondary compact add-route-stop" type="button">
+                    ➕ Agregar Parada
+                </button>
+                <div class="favorite-place-actions" aria-label="Lugares favoritos">
+                    <button id="go-home" class="secondary" type="button">🏠 Ir a Casa</button>
+                    <button id="go-work" class="secondary" type="button">💼 Ir a Trabajo</button>
+                </div>
+                <div class="promo-entry">
+                    <label for="promo-code">Código de descuento</label>
+                    <div class="promo-input-row">
+                        <input id="promo-code" type="text" maxlength="32" autocomplete="off">
+                        <button id="apply-promo" class="secondary" type="button">Aplicar</button>
+                    </div>
+                    <p id="promo-message" class="message" role="status" aria-live="polite"></p>
+                    <p id="promo-estimate" class="promo-estimate" hidden>
+                        Precio estimado con descuento: <strong id="promo-estimated-price"></strong>
+                    </p>
+                </div>
                 <div class="button-row">
                     <button id="use-location" class="secondary" type="button">📍 Usar mi ubicación actual</button>
                 </div>
@@ -104,6 +139,10 @@
                     <p>Conductor: <strong id="passenger-driver-name"></strong></p>
                     <a id="passenger-driver-call" class="primary passenger-driver-call" hidden>📞 Llamar</a>
                     <p id="passenger-driver-eta" role="status" aria-live="polite">Calculando tiempo de llegada...</p>
+                    <div class="passenger-safety-actions">
+                        <button id="passenger-sos" class="passenger-sos-button" type="button" hidden>🚨 SOS</button>
+                        <button id="passenger-share-trip" class="passenger-share-button" type="button" hidden>📤 Compartir Viaje</button>
+                    </div>
                 </section>
                 <button id="cancel-ride" class="secondary cancel-ride" type="button" hidden>Cancelar Viaje</button>
             </section>
@@ -113,6 +152,16 @@
                     <span>Ganancias Acumuladas</span>
                     <strong id="driver-earnings-amount">$0</strong>
                 </div>
+                <div id="driver-verification-banner" class="verification-banner" role="alert" hidden>
+                    <strong>Tu cuenta no está verificada. Sube tus documentos para poder trabajar</strong>
+                    <p id="driver-verification-reason" hidden></p>
+                </div>
+                <button id="open-driver-documents" class="secondary notification-button" type="button">
+                    📄 Mis Documentos
+                </button>
+                <button id="open-driver-wallet" class="secondary notification-button" type="button">
+                    <i class="fa-solid fa-wallet" aria-hidden="true"></i> Mi Billetera
+                </button>
                 <div id="available-rides-section">
                     <h3>Solicitudes disponibles</h3>
                     <button id="refresh-rides" class="secondary" type="button">Actualizar solicitudes</button>
@@ -146,6 +195,19 @@
 
             <p id="app-message" class="message" aria-live="polite"></p>
         </section>
+        <section id="install-app" class="install-app" aria-labelledby="install-app-title" hidden>
+            <h2 id="install-app-title">Instalar App</h2>
+            <div class="install-app-buttons">
+                <button id="install-android" class="install-app-button" type="button" hidden>
+                    <i class="fa-brands fa-android" aria-hidden="true"></i>
+                    <span>Instalar en Android</span>
+                </button>
+                <button id="install-apple" class="install-app-button" type="button" hidden>
+                    <i class="fa-brands fa-apple" aria-hidden="true"></i>
+                    <span>Instalar en iPhone</span>
+                </button>
+            </div>
+        </section>
     </aside>
 
     <section id="forgot-password-modal" class="modal-backdrop" hidden>
@@ -156,6 +218,7 @@
             </header>
             <form id="forgot-password-form">
                 <label>Correo electrónico<input name="email" type="email" autocomplete="email" maxlength="256" required></label>
+                <p class="forgot-password-hint">Si el correo está registrado, recibirás un código en tu bandeja de entrada en unos segundos.</p>
                 <p id="forgot-password-message" class="message" aria-live="polite"></p>
                 <div class="profile-modal-actions">
                     <button class="primary" type="submit">Enviar código</button>
@@ -199,6 +262,26 @@
             <form id="profile-form">
                 <label>Nombre<input name="nombre" type="text" autocomplete="name" maxlength="100" required></label>
                 <label>Teléfono<input name="telefono" type="tel" autocomplete="tel" maxlength="32" required></label>
+                <fieldset id="favorite-places-section" class="favorite-places-settings" hidden>
+                    <legend>Lugares favoritos</legend>
+                    <div class="destination-search favorite-address-field">
+                        <label for="home-address">Dirección de Casa
+                            <input id="home-address" name="direccionCasa" type="search" maxlength="300" autocomplete="street-address" aria-autocomplete="list" aria-controls="home-address-suggestions" aria-expanded="false">
+                        </label>
+                        <div id="home-address-suggestions" class="destination-suggestions" role="listbox" hidden></div>
+                        <input id="home-lat" name="latCasa" type="hidden">
+                        <input id="home-lng" name="lngCasa" type="hidden">
+                    </div>
+                    <div class="destination-search favorite-address-field">
+                        <label for="work-address">Dirección de Trabajo
+                            <input id="work-address" name="direccionTrabajo" type="search" maxlength="300" autocomplete="off" aria-autocomplete="list" aria-controls="work-address-suggestions" aria-expanded="false">
+                        </label>
+                        <div id="work-address-suggestions" class="destination-suggestions" role="listbox" hidden></div>
+                        <input id="work-lat" name="latTrabajo" type="hidden">
+                        <input id="work-lng" name="lngTrabajo" type="hidden">
+                    </div>
+                    <p class="hint">Selecciona una dirección sugerida para guardar sus coordenadas.</p>
+                </fieldset>
                 <button id="toggle-password-fields" class="secondary" type="button">¿Quieres cambiar tu contraseña?</button>
                 <div id="password-change-fields" class="password-change-fields" hidden>
                     <label>Contraseña actual<input name="passwordActual" type="password" autocomplete="current-password" maxlength="128"></label>
@@ -223,6 +306,95 @@
             </header>
             <p id="trip-history-message" class="message" aria-live="polite"></p>
             <div id="trip-history-list" class="trip-history-list"></div>
+        </div>
+    </section>
+
+    <section id="passenger-history-modal" class="modal-backdrop" hidden>
+        <div class="history-modal passenger-history-modal card" role="dialog" aria-modal="true" aria-labelledby="passenger-history-title">
+            <header class="profile-modal-header">
+                <h2 id="passenger-history-title">Mis Viajes</h2>
+                <button id="close-passenger-history" class="secondary compact" type="button" aria-label="Cerrar historial de pasajero">×</button>
+            </header>
+            <div class="passenger-history-summary" aria-live="polite">
+                <article class="passenger-history-stat">
+                    <span>Total Viajes</span>
+                    <strong id="passenger-history-total-trips">0</strong>
+                </article>
+                <article class="passenger-history-stat">
+                    <span>Total Gastado</span>
+                    <strong id="passenger-history-total-spent">$0</strong>
+                </article>
+            </div>
+            <p id="passenger-history-message" class="message" aria-live="polite"></p>
+            <div id="passenger-history-list" class="trip-history-list"></div>
+        </div>
+    </section>
+
+    <section id="driver-wallet-modal" class="modal-backdrop" hidden>
+        <div class="driver-wallet-modal card" role="dialog" aria-modal="true" aria-labelledby="driver-wallet-title">
+            <header class="profile-modal-header">
+                <h2 id="driver-wallet-title">Mi Billetera</h2>
+                <button id="close-driver-wallet" class="secondary compact" type="button" aria-label="Cerrar billetera">×</button>
+            </header>
+            <div class="wallet-summary" aria-live="polite">
+                <span>Ganancia Total</span>
+                <strong id="wallet-total">$0</strong>
+            </div>
+            <p id="wallet-message" class="message" aria-live="polite"></p>
+            <div id="wallet-history-container" class="wallet-table-container" hidden>
+                <table class="wallet-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Fecha</th>
+                            <th scope="col">Monto</th>
+                            <th scope="col">Comisión</th>
+                            <th scope="col">Ganancia Neta</th>
+                        </tr>
+                    </thead>
+                    <tbody id="wallet-trip-list"></tbody>
+                </table>
+            </div>
+            <p id="wallet-empty" class="hint" hidden>No hay viajes finalizados todavía.</p>
+            <button id="request-withdrawal" class="primary wallet-withdrawal" type="button">Solicitar Retiro</button>
+        </div>
+    </section>
+
+    <section id="driver-documents-modal" class="modal-backdrop" hidden>
+        <div class="profile-modal driver-documents-modal card" role="dialog" aria-modal="true" aria-labelledby="driver-documents-title">
+            <header class="profile-modal-header">
+                <h2 id="driver-documents-title">Mis Documentos</h2>
+                <button id="close-driver-documents" class="secondary compact" type="button" aria-label="Cerrar documentos">×</button>
+            </header>
+            <p id="driver-documents-verification-status" class="driver-documents-status"></p>
+            <p id="driver-documents-rejection-reason" class="driver-documents-rejection" hidden></p>
+            <div class="driver-document-list">
+                <div class="driver-document-item">
+                    <label for="document-license">Licencia
+                        <input id="document-license" type="file" accept=".pdf,.jpg,.jpeg,.png">
+                    </label>
+                    <button class="secondary upload-driver-document" type="button" data-document-type="Licencia" data-file-input="document-license" data-status-id="license-document-status">Subir</button>
+                    <p id="license-document-status" class="driver-document-status">Aún no subido</p>
+                </div>
+                <div class="driver-document-item">
+                    <label for="document-soat">SOAT
+                        <input id="document-soat" type="file" accept=".pdf,.jpg,.jpeg,.png">
+                    </label>
+                    <button class="secondary upload-driver-document" type="button" data-document-type="SOAT" data-file-input="document-soat" data-status-id="soat-document-status">Subir</button>
+                    <p id="soat-document-status" class="driver-document-status">Aún no subido</p>
+                </div>
+                <div class="driver-document-item">
+                    <label for="document-registration">Tarjeta de propiedad
+                        <input id="document-registration" type="file" accept=".pdf,.jpg,.jpeg,.png">
+                    </label>
+                    <button class="secondary upload-driver-document" type="button" data-document-type="TarjetaPropiedad" data-file-input="document-registration" data-status-id="registration-document-status">Subir</button>
+                    <p id="registration-document-status" class="driver-document-status">Aún no subido</p>
+                </div>
+            </div>
+            <p id="driver-documents-message" class="message" role="status" aria-live="polite"></p>
+            <div class="profile-modal-actions">
+                <button id="submit-driver-verification" class="primary" type="button">Enviar a verificación</button>
+                <button id="cancel-driver-documents" class="secondary" type="button">Cerrar</button>
+            </div>
         </div>
     </section>
 

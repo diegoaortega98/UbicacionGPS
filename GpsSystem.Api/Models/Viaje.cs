@@ -41,6 +41,8 @@ public class Viaje
 
     public decimal ComisionPlataforma { get; set; }
 
+    public Guid? PromocionId { get; set; }
+
     [Range(1, 5)]
     public int? Calificacion { get; set; }
 
@@ -54,6 +56,10 @@ public class Viaje
     public Usuario Pasajero { get; set; } = null!;
 
     public Usuario? Conductor { get; set; }
+
+    public Promocion? Promocion { get; set; }
+
+    public ICollection<ParadaViaje> Paradas { get; set; } = new List<ParadaViaje>();
 
     public ICollection<Mensaje> Mensajes { get; set; } = new List<Mensaje>();
 }

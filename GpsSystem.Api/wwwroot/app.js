@@ -1,4 +1,10 @@
+let deferredPrompt = null;
 const map = L.map('map').setView([10.3910, -75.4794], 13);
+const telemetryMarkerIcon = L.divIcon({
+    className: 'telemetry-map-marker',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+});
 const authPanel = document.getElementById('auth-panel');
 const userPanel = document.getElementById('user-panel');
 const authMessage = document.getElementById('auth-message');
@@ -13,9 +19,27 @@ const addressSearchFields = {
         suggestions: document.getElementById('destination-suggestions')
     }
 };
+const favoriteAddressFields = {
+    home: {
+        input: document.getElementById('home-address'),
+        suggestions: document.getElementById('home-address-suggestions'),
+        latitude: document.getElementById('home-lat'),
+        longitude: document.getElementById('home-lng'),
+        label: 'Casa'
+    },
+    work: {
+        input: document.getElementById('work-address'),
+        suggestions: document.getElementById('work-address-suggestions'),
+        latitude: document.getElementById('work-lat'),
+        longitude: document.getElementById('work-lng'),
+        label: 'Trabajo'
+    }
+};
 const searchCityLabel = document.getElementById('search-city');
 const currentCityInput = document.getElementById('current-city');
 const markers = new Map();
+const routeStops = [];
+let nextRouteStopId = 1;
 const OpenStreetMapProvider = window.GeoSearch?.OpenStreetMapProvider;
 const baseGeocodingParams = {
     'accept-language': 'es',
@@ -31,9 +55,14 @@ const addressMarkers = { origin: null, destination: null };
 const searchTimers = { origin: null, destination: null };
 const searchControllers = { origin: null, destination: null };
 const searchRequestIds = { origin: 0, destination: 0 };
+const favoriteSearchTimers = { home: null, work: null };
+const favoriteSearchControllers = { home: null, work: null };
+const favoriteSearchRequestIds = { home: 0, work: 0 };
 let lastSearchStartedAt = 0;
 let routeControl;
+let routeWaypointCount = 0;
 let activeTrip = null;
+let appliedPromo = null;
 let acceptedDriverContact = null;
 let calls = null;
 let chat = null;
@@ -106,6 +135,41 @@ document.getElementById('cell-call').addEventListener('click', (event) => {
     if (!event.currentTarget.hasAttribute('href')) {
         event.preventDefault();
         window.alert('Este usuario no tiene un número de teléfono registrado.');
+    }
+});
+
+document.getElementById('passenger-sos').addEventListener('click', () => {
+    if (!activeTrip || !['Aceptado', 'EnCurso'].includes(activeTrip.estado)) return;
+    if (window.confirm('¿Estás en peligro? Se llamará a emergencias.')) {
+        window.location.href = 'tel:123';
+    }
+});
+
+document.getElementById('passenger-share-trip').addEventListener('click', async () => {
+    if (!activeTrip || !['Aceptado', 'EnCurso'].includes(activeTrip.estado)) return;
+
+    const trip = activeTrip;
+    const destinationInput = document.getElementById('destination-search').value.trim();
+    const coordinates = [Number(trip.destinoLat), Number(trip.destinoLng)];
+    const destination = destinationInput
+        || (coordinates.every(Number.isFinite)
+            ? coordinates.map((coordinate) => coordinate.toFixed(5)).join(', ')
+            : 'destino indicado');
+    const title = 'Mi viaje en UbicacionGPS';
+    const text = `Estoy viajando con ${trip.conductorNombre || 'un conductor'} en un ${trip.vehiculo || 'vehículo no especificado'}. Mi destino es ${destination}.`;
+    const shareData = { title, text, url: window.location.href };
+
+    if (!navigator.share) {
+        window.alert(`${title}\n${text}\n${shareData.url}`);
+        return;
+    }
+
+    try {
+        await navigator.share(shareData);
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            showMessage(appMessage, `No se pudo compartir el viaje: ${error.message}`);
+        }
     }
 });
 
@@ -225,6 +289,59 @@ async function loadTripHistory() {
     }
 }
 
+async function loadPassengerHistory() {
+    const message = document.getElementById('passenger-history-message');
+    const list = document.getElementById('passenger-history-list');
+    list.replaceChildren();
+    document.getElementById('passenger-history-total-trips').textContent = '0';
+    document.getElementById('passenger-history-total-spent').textContent = formatCurrency(0);
+    showMessage(message, 'Cargando historial...');
+    try {
+        const [statistics, trips] = await Promise.all([
+            api('/api/viajes/estadisticas-pasajero'),
+            api('/api/viajes/historial-pasajero')
+        ]);
+        document.getElementById('passenger-history-total-trips').textContent =
+            String(statistics.totalViajes);
+        document.getElementById('passenger-history-total-spent').textContent =
+            formatCurrency(statistics.totalGastado);
+        showMessage(message, trips.length ? '' : 'Aún no tienes viajes finalizados.');
+
+        for (const trip of trips) {
+            const item = document.createElement('article');
+            item.className = 'trip-history-item';
+
+            const date = document.createElement('strong');
+            date.textContent = new Date(trip.fecha).toLocaleString('es-CO');
+            const destination = document.createElement('p');
+            destination.textContent =
+                `Destino: ${Number(trip.destinoLat).toFixed(5)}, ${Number(trip.destinoLng).toFixed(5)}`;
+            const origin = document.createElement('p');
+            origin.textContent =
+                `Origen: ${Number(trip.origenLat).toFixed(5)}, ${Number(trip.origenLng).toFixed(5)}`;
+            const driver = document.createElement('p');
+            driver.textContent = `Conductor: ${trip.conductorNombre || 'No disponible'}`;
+            const price = document.createElement('p');
+            price.textContent = `Precio: ${formatCurrency(trip.montoPagado)}`;
+            item.append(date, destination, origin, driver, price);
+            list.append(item);
+        }
+    } catch (error) {
+        showMessage(message, error.message);
+    }
+}
+
+document.getElementById('open-passenger-history').addEventListener('click', async () => {
+    document.getElementById('passenger-history-modal').hidden = false;
+    await loadPassengerHistory();
+});
+document.getElementById('close-passenger-history').addEventListener('click', () => {
+    document.getElementById('passenger-history-modal').hidden = true;
+});
+document.getElementById('passenger-history-modal').addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) event.currentTarget.hidden = true;
+});
+
 document.getElementById('open-trip-history').addEventListener('click', async () => {
     document.getElementById('trip-history-modal').hidden = false;
     await loadTripHistory();
@@ -234,6 +351,103 @@ document.getElementById('open-admin-panel').addEventListener('click', () => {
 });
 document.getElementById('close-trip-history').addEventListener('click', () => {
     document.getElementById('trip-history-modal').hidden = true;
+});
+document.getElementById('open-driver-wallet').addEventListener('click', async () => {
+    const modal = document.getElementById('driver-wallet-modal');
+    modal.hidden = false;
+    document.getElementById('wallet-message').textContent = '';
+    try {
+        await cargarBilletera();
+    } catch (error) {
+        document.getElementById('wallet-message').textContent =
+            `No se pudo cargar la billetera: ${error.message}`;
+    }
+});
+document.getElementById('close-driver-wallet').addEventListener('click', () => {
+    document.getElementById('driver-wallet-modal').hidden = true;
+});
+document.getElementById('driver-wallet-modal').addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) event.currentTarget.hidden = true;
+});
+document.getElementById('open-driver-documents').addEventListener('click', () => {
+    const account = JSON.parse(localStorage.getItem('gps-user'));
+    actualizarInterfazVerificacionConductor(account);
+    showMessage(document.getElementById('driver-documents-message'));
+    document.getElementById('driver-documents-modal').hidden = false;
+});
+document.getElementById('close-driver-documents').addEventListener('click', () => {
+    document.getElementById('driver-documents-modal').hidden = true;
+});
+document.getElementById('cancel-driver-documents').addEventListener('click', () => {
+    document.getElementById('driver-documents-modal').hidden = true;
+});
+document.getElementById('driver-documents-modal').addEventListener('click', (event) => {
+    if (event.target === event.currentTarget) event.currentTarget.hidden = true;
+});
+document.querySelectorAll('.upload-driver-document').forEach((button) => {
+    button.addEventListener('click', async () => {
+        const fileInput = document.getElementById(button.dataset.fileInput);
+        const status = document.getElementById(button.dataset.statusId);
+        const file = fileInput.files[0];
+        if (!file) {
+            showMessage(document.getElementById('driver-documents-message'), 'Selecciona un archivo antes de subirlo.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('archivo', file);
+        formData.append('tipoDocumento', button.dataset.documentType);
+        button.disabled = true;
+        showMessage(status, 'Subiendo documento...');
+        showMessage(document.getElementById('driver-documents-message'));
+        try {
+            const verification = await apiFormData('/api/conductor/subir-documento', formData);
+            const account = JSON.parse(localStorage.getItem('gps-user'));
+            if (!account) throw new Error('No se encontró la sesión del conductor.');
+            account.estadoVerificacion = verification.estadoVerificacion;
+            account.motivoRechazo = verification.motivoRechazo;
+            account.tieneLicencia = verification.tieneLicencia;
+            account.tieneSoat = verification.tieneSoat;
+            account.tieneTarjetaPropiedad = verification.tieneTarjetaPropiedad;
+            localStorage.setItem('gps-user', JSON.stringify(account));
+            actualizarInterfazVerificacionConductor(account);
+            fileInput.value = '';
+            showMessage(
+                document.getElementById('driver-documents-message'),
+                'Documento cargado. Sube los demás y envía la verificación.'
+            );
+        } catch (error) {
+            showMessage(status, 'No se pudo subir el documento.');
+            showMessage(document.getElementById('driver-documents-message'), error.message);
+        } finally {
+            button.disabled = false;
+        }
+    });
+});
+document.getElementById('submit-driver-verification').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    showMessage(document.getElementById('driver-documents-message'), 'Enviando documentos a revisión...');
+    try {
+        const verification = await api('/api/conductor/enviar-verificacion', { method: 'POST' });
+        const account = JSON.parse(localStorage.getItem('gps-user'));
+        if (!account) throw new Error('No se encontró la sesión del conductor.');
+        account.estadoVerificacion = verification.estadoVerificacion;
+        account.motivoRechazo = verification.motivoRechazo;
+        account.tieneLicencia = verification.tieneLicencia;
+        account.tieneSoat = verification.tieneSoat;
+        account.tieneTarjetaPropiedad = verification.tieneTarjetaPropiedad;
+        localStorage.setItem('gps-user', JSON.stringify(account));
+        actualizarInterfazVerificacionConductor(account);
+        showMessage(document.getElementById('driver-documents-message'), 'Documentos enviados para verificación.');
+    } catch (error) {
+        showMessage(document.getElementById('driver-documents-message'), error.message);
+    } finally {
+        button.disabled = false;
+    }
+});
+document.getElementById('request-withdrawal').addEventListener('click', () => {
+    window.alert('Retiro solicitado. Pronto nos pondremos en contacto.');
 });
 
 document.querySelectorAll('#trip-rating-stars .rating-star').forEach((button) => {
@@ -274,10 +488,20 @@ document.getElementById('open-profile').addEventListener('click', () => {
     const account = JSON.parse(localStorage.getItem('gps-user'));
     const form = document.getElementById('profile-form');
     const passwordFields = document.getElementById('password-change-fields');
+    document.getElementById('favorite-places-section').hidden = account?.rol !== 'Pasajero';
+    for (const key of Object.keys(favoriteAddressFields)) {
+        hideFavoriteAddressSuggestions(key);
+    }
     passwordFields.hidden = true;
     document.getElementById('toggle-password-fields').textContent = '¿Quieres cambiar tu contraseña?';
     form.elements.namedItem('nombre').value = account?.nombre || '';
     form.elements.namedItem('telefono').value = account?.telefono || '';
+    form.elements.namedItem('direccionCasa').value = account?.direccionCasa || '';
+    form.elements.namedItem('latCasa').value = account?.latCasa ?? '';
+    form.elements.namedItem('lngCasa').value = account?.lngCasa ?? '';
+    form.elements.namedItem('direccionTrabajo').value = account?.direccionTrabajo || '';
+    form.elements.namedItem('latTrabajo').value = account?.latTrabajo ?? '';
+    form.elements.namedItem('lngTrabajo').value = account?.lngTrabajo ?? '';
     form.elements.namedItem('passwordActual').value = '';
     form.elements.namedItem('passwordNueva').value = '';
     updateProfileRating(account);
@@ -310,6 +534,42 @@ document.getElementById('profile-form').addEventListener('submit', async (event)
     submitButton.disabled = true;
     showMessage(document.getElementById('profile-message'));
     try {
+        const account = JSON.parse(localStorage.getItem('gps-user'));
+        if (account?.rol === 'Pasajero') {
+            const favoriteRequest = {
+                direccionCasa: values.direccionCasa.trim() || null,
+                latCasa: values.latCasa === '' ? null : Number(values.latCasa),
+                lngCasa: values.lngCasa === '' ? null : Number(values.lngCasa),
+                direccionTrabajo: values.direccionTrabajo.trim() || null,
+                latTrabajo: values.latTrabajo === '' ? null : Number(values.latTrabajo),
+                lngTrabajo: values.lngTrabajo === '' ? null : Number(values.lngTrabajo)
+            };
+            const missingCoordinates = [
+                ['Casa', favoriteRequest.direccionCasa, favoriteRequest.latCasa, favoriteRequest.lngCasa],
+                ['Trabajo', favoriteRequest.direccionTrabajo, favoriteRequest.latTrabajo, favoriteRequest.lngTrabajo]
+            ].some(([, address, latitude, longitude]) =>
+                (address && (latitude === null || longitude === null))
+                || (!address && (latitude !== null || longitude !== null)));
+            if (missingCoordinates) {
+                showMessage(
+                    document.getElementById('profile-message'),
+                    'Selecciona una dirección sugerida para Casa y Trabajo antes de guardar.'
+                );
+                return;
+            }
+            const favoriteProfile = await api('/api/auth/lugares-favoritos', {
+                method: 'PUT',
+                body: JSON.stringify(favoriteRequest)
+            });
+            account.direccionCasa = favoriteProfile.direccionCasa;
+            account.latCasa = favoriteProfile.latCasa;
+            account.lngCasa = favoriteProfile.lngCasa;
+            account.direccionTrabajo = favoriteProfile.direccionTrabajo;
+            account.latTrabajo = favoriteProfile.latTrabajo;
+            account.lngTrabajo = favoriteProfile.lngTrabajo;
+            localStorage.setItem('gps-user', JSON.stringify(account));
+        }
+
         const profile = await api('/api/auth/perfil', {
             method: 'PUT',
             body: JSON.stringify({
@@ -323,11 +583,16 @@ document.getElementById('profile-form').addEventListener('submit', async (event)
                     })
             })
         });
-        const account = JSON.parse(localStorage.getItem('gps-user'));
         account.nombre = profile.nombre;
         account.telefono = profile.telefono;
         account.promedioCalificacion = profile.promedioCalificacion;
         account.totalCalificaciones = profile.totalCalificaciones;
+        account.direccionCasa = profile.direccionCasa;
+        account.latCasa = profile.latCasa;
+        account.lngCasa = profile.lngCasa;
+        account.direccionTrabajo = profile.direccionTrabajo;
+        account.latTrabajo = profile.latTrabajo;
+        account.lngTrabajo = profile.lngTrabajo;
         localStorage.setItem('gps-user', JSON.stringify(account));
         updateWelcome(account);
         closeProfileModal();
@@ -346,8 +611,8 @@ for (const key of ['gps-token', 'gps-user']) {
     sessionStorage.removeItem(key);
 }
 
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
     maxZoom: 20
 }).addTo(map);
 
@@ -491,10 +756,140 @@ function selectAddress(prefix, result) {
     document.getElementById(`${prefix}-lat`).value = result.y;
     document.getElementById(`${prefix}-lng`).value = result.x;
     if (addressMarkers[prefix]) addressMarkers[prefix].remove();
-    addressMarkers[prefix] = L.marker([result.y, result.x]).addTo(map).bindPopup(result.label);
+    addressMarkers[prefix] = L.marker([result.y, result.x], { icon: telemetryMarkerIcon })
+        .addTo(map)
+        .bindPopup(result.label);
     map.setView([result.y, result.x], Math.max(map.getZoom(), 15));
     addressMarkers[prefix].openPopup();
     hideAddressSuggestions(prefix);
+}
+
+function goToFavoritePlace(key) {
+    const account = JSON.parse(localStorage.getItem('gps-user'));
+    const favorite = key === 'home'
+        ? { address: account?.direccionCasa, latitude: account?.latCasa, longitude: account?.lngCasa }
+        : { address: account?.direccionTrabajo, latitude: account?.latTrabajo, longitude: account?.lngTrabajo };
+    const placeName = key === 'home' ? 'Casa' : 'Trabajo';
+    const latitude = Number(favorite.latitude);
+    const longitude = Number(favorite.longitude);
+    if (!favorite.address
+        || favorite.latitude === null || favorite.latitude === undefined
+        || favorite.longitude === null || favorite.longitude === undefined
+        || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        window.alert(`Aún no has guardado tu dirección de ${placeName}. Ve a Mi Perfil para configurarla`);
+        return;
+    }
+
+    selectAddress('destination', {
+        label: favorite.address,
+        y: latitude,
+        x: longitude
+    });
+
+    const originLatitudeValue = document.getElementById('origin-lat').value;
+    const originLongitudeValue = document.getElementById('origin-lng').value;
+    const originLatitude = Number(originLatitudeValue);
+    const originLongitude = Number(originLongitudeValue);
+    if (!activeTrip
+        && originLatitudeValue !== ''
+        && originLongitudeValue !== ''
+        && Number.isFinite(originLatitude)
+        && Number.isFinite(originLongitude)) {
+        showRoute({
+            origenLat: originLatitude,
+            origenLng: originLongitude,
+            destinoLat: latitude,
+            destinoLng: longitude
+        });
+    } else if (!activeTrip) {
+        showMessage(appMessage, 'Selecciona un origen para dibujar la ruta hacia este lugar.');
+    }
+}
+
+document.getElementById('go-home').addEventListener('click', () => goToFavoritePlace('home'));
+document.getElementById('go-work').addEventListener('click', () => goToFavoritePlace('work'));
+
+function hideFavoriteAddressSuggestions(key) {
+    const field = favoriteAddressFields[key];
+    field.suggestions.hidden = true;
+    field.input.setAttribute('aria-expanded', 'false');
+}
+
+for (const [key, field] of Object.entries(favoriteAddressFields)) {
+    field.input.addEventListener('input', () => {
+        clearTimeout(favoriteSearchTimers[key]);
+        favoriteSearchControllers[key]?.abort();
+        favoriteSearchRequestIds[key] += 1;
+        const requestId = favoriteSearchRequestIds[key];
+        field.latitude.value = '';
+        field.longitude.value = '';
+        const query = field.input.value.trim();
+        if (query.length < 3 || !geocodeProvider) {
+            hideFavoriteAddressSuggestions(key);
+            return;
+        }
+
+        favoriteSearchTimers[key] = setTimeout(async () => {
+            const delay = Math.max(0, 1000 - (Date.now() - lastSearchStartedAt));
+            const loading = document.createElement('p');
+            loading.className = 'destination-suggestion-empty';
+            loading.setAttribute('role', 'status');
+            loading.textContent = 'Buscando...';
+            field.suggestions.replaceChildren(loading);
+            field.suggestions.hidden = false;
+            field.input.setAttribute('aria-expanded', 'true');
+            if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+            if (requestId !== favoriteSearchRequestIds[key]) return;
+
+            const controller = new AbortController();
+            favoriteSearchControllers[key] = controller;
+            lastSearchStartedAt = Date.now();
+            try {
+                const results = await geocodeProvider.search({
+                    query: `${query}, Colombia`,
+                    signal: controller.signal
+                });
+                if (requestId !== favoriteSearchRequestIds[key]) return;
+                if (searchCityBounds) {
+                    results.sort((first, second) =>
+                        Number(addressResultIsInCity(second)) - Number(addressResultIsInCity(first)));
+                }
+                field.suggestions.replaceChildren();
+                if (!results.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'destination-suggestion-empty';
+                    empty.textContent = 'No se encontraron direcciones.';
+                    field.suggestions.append(empty);
+                } else {
+                    for (const result of results.slice(0, 6)) {
+                        const option = document.createElement('button');
+                        option.type = 'button';
+                        option.className = 'destination-suggestion';
+                        option.setAttribute('role', 'option');
+                        option.textContent = result.label;
+                        option.addEventListener('click', () => {
+                            field.input.value = result.label;
+                            field.latitude.value = result.y;
+                            field.longitude.value = result.x;
+                            hideFavoriteAddressSuggestions(key);
+                            showMessage(document.getElementById('profile-message'));
+                        });
+                        field.suggestions.append(option);
+                    }
+                }
+                field.suggestions.hidden = false;
+                field.input.setAttribute('aria-expanded', 'true');
+            } catch (error) {
+                if (error.name !== 'AbortError' && requestId === favoriteSearchRequestIds[key]) {
+                    showMessage(
+                        document.getElementById('profile-message'),
+                        `No se pudo buscar la dirección de ${field.label}. Inténtalo de nuevo.`
+                    );
+                    hideFavoriteAddressSuggestions(key);
+                }
+            }
+        }, 350);
+    });
 }
 
 function renderAddressSuggestions(prefix, results) {
@@ -523,7 +918,13 @@ function renderAddressSuggestions(prefix, results) {
     field.input.setAttribute('aria-expanded', 'true');
 }
 
-for (const [prefix, field] of Object.entries(addressSearchFields)) {
+function configureAddressSearch(prefix, field) {
+    addressSearchFields[prefix] = field;
+    searchTimers[prefix] ??= null;
+    searchControllers[prefix] ??= null;
+    searchRequestIds[prefix] ??= 0;
+    addressMarkers[prefix] ??= null;
+
     field.input.addEventListener('input', () => {
         clearTimeout(searchTimers[prefix]);
         if (searchControllers[prefix]) searchControllers[prefix].abort();
@@ -578,10 +979,107 @@ for (const [prefix, field] of Object.entries(addressSearchFields)) {
     });
 }
 
+for (const [prefix, field] of Object.entries(addressSearchFields)) {
+    configureAddressSearch(prefix, field);
+}
+
+function updateRouteStopControls() {
+    routeStops.forEach((prefix, index) => {
+        document.getElementById(`${prefix}-label`).textContent = `Parada ${index + 1}`;
+        document.getElementById(`${prefix}-remove`).setAttribute(
+            'aria-label',
+            `Eliminar parada ${index + 1}`);
+    });
+    document.getElementById('add-route-stop').disabled = routeStops.length >= 3;
+}
+
+function addRouteStop() {
+    if (routeStops.length >= 3) return;
+
+    const prefix = `route-stop-${nextRouteStopId++}`;
+    const row = document.createElement('div');
+    row.id = `${prefix}-row`;
+    row.className = 'route-stop-row';
+
+    const searchContainer = document.createElement('div');
+    searchContainer.className = 'destination-search route-stop-search';
+    const label = document.createElement('label');
+    label.id = `${prefix}-label`;
+    label.htmlFor = `${prefix}-search`;
+    label.textContent = `Parada ${routeStops.length + 1}`;
+
+    const input = document.createElement('input');
+    input.id = `${prefix}-search`;
+    input.type = 'search';
+    input.placeholder = 'Escribe una dirección o lugar';
+    input.autocomplete = 'off';
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-controls', `${prefix}-suggestions`);
+    input.setAttribute('aria-expanded', 'false');
+    label.append(input);
+
+    const suggestions = document.createElement('div');
+    suggestions.id = `${prefix}-suggestions`;
+    suggestions.className = 'destination-suggestions';
+    suggestions.setAttribute('role', 'listbox');
+    suggestions.hidden = true;
+    const latitude = document.createElement('input');
+    latitude.id = `${prefix}-lat`;
+    latitude.type = 'hidden';
+    const longitude = document.createElement('input');
+    longitude.id = `${prefix}-lng`;
+    longitude.type = 'hidden';
+    searchContainer.append(label, suggestions, latitude, longitude);
+
+    const removeButton = document.createElement('button');
+    removeButton.id = `${prefix}-remove`;
+    removeButton.type = 'button';
+    removeButton.className = 'secondary compact route-stop-remove';
+    removeButton.textContent = '❌';
+    removeButton.addEventListener('click', () => removeRouteStop(prefix));
+    row.append(searchContainer, removeButton);
+    document.getElementById('route-stops-list').append(row);
+    routeStops.push(prefix);
+    configureAddressSearch(prefix, { input, suggestions });
+    updateRouteStopControls();
+}
+
+function removeRouteStop(prefix) {
+    const index = routeStops.indexOf(prefix);
+    if (index < 0) return;
+
+    cancelAddressSearch(prefix);
+    hideAddressSuggestions(prefix);
+    addressMarkers[prefix]?.remove();
+    document.getElementById(`${prefix}-row`).remove();
+    routeStops.splice(index, 1);
+    delete addressSearchFields[prefix];
+    delete searchTimers[prefix];
+    delete searchControllers[prefix];
+    delete searchRequestIds[prefix];
+    delete addressMarkers[prefix];
+    updateRouteStopControls();
+}
+
+function readRouteStops() {
+    return routeStops.map((prefix) => ({
+        input: addressSearchFields[prefix].input,
+        latitude: document.getElementById(`${prefix}-lat`).value,
+        longitude: document.getElementById(`${prefix}-lng`).value
+    }));
+}
+
+document.getElementById('add-route-stop').addEventListener('click', addRouteStop);
+
 document.addEventListener('click', (event) => {
     for (const [prefix, field] of Object.entries(addressSearchFields)) {
         if (!field.suggestions.contains(event.target) && event.target !== field.input) {
             hideAddressSuggestions(prefix);
+        }
+    }
+    for (const [key, field] of Object.entries(favoriteAddressFields)) {
+        if (!field.suggestions.contains(event.target) && event.target !== field.input) {
+            hideFavoriteAddressSuggestions(key);
         }
     }
 });
@@ -653,6 +1151,26 @@ async function api(path, options = {}) {
     }
 
     return response.status === 204 ? null : response.json();
+}
+
+async function apiFormData(path, formData) {
+    const token = localStorage.getItem('gps-token');
+    const response = await fetch(path, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData
+    });
+    if (!response.ok) {
+        if (response.status === 401 && token) {
+            cerrarSesionPorExpiracion();
+            throw new Error('Sesión expirada. Vuelve a iniciar sesión.');
+        }
+
+        const problem = await response.json().catch(() => null);
+        throw new Error(problem?.detail || problem?.title || `Error HTTP ${response.status}`);
+    }
+
+    return response.json();
 }
 
 function formValues(form) {
@@ -818,6 +1336,31 @@ function updateWelcome(account) {
         `${role} · ${account.nombre?.trim() || account.email}`;
 }
 
+function actualizarInterfazVerificacionConductor(account) {
+    const esConductor = account?.rol === 'Conductor';
+    const estado = account?.estadoVerificacion || 'Pendiente';
+    const banner = document.getElementById('driver-verification-banner');
+    banner.hidden = !esConductor || estado === 'Aprobado';
+    const motivo = document.getElementById('driver-verification-reason');
+    motivo.hidden = estado !== 'Rechazado' || !account?.motivoRechazo;
+    motivo.textContent = motivo.hidden ? '' : `Motivo: ${account.motivoRechazo}`;
+    document.getElementById('open-driver-documents').hidden = !esConductor;
+
+    document.getElementById('driver-documents-verification-status').textContent =
+        `Estado de verificación: ${estado}`;
+    const rejectionReason = document.getElementById('driver-documents-rejection-reason');
+    rejectionReason.hidden = estado !== 'Rechazado' || !account?.motivoRechazo;
+    rejectionReason.textContent = rejectionReason.hidden
+        ? ''
+        : `Motivo del rechazo: ${account.motivoRechazo}`;
+    document.getElementById('license-document-status').textContent =
+        account?.tieneLicencia ? 'Documento cargado' : 'Aún no subido';
+    document.getElementById('soat-document-status').textContent =
+        account?.tieneSoat ? 'Documento cargado' : 'Aún no subido';
+    document.getElementById('registration-document-status').textContent =
+        account?.tieneTarjetaPropiedad ? 'Documento cargado' : 'Aún no subido';
+}
+
 async function showAuthenticatedUi() {
     const account = JSON.parse(localStorage.getItem('gps-user'));
     if (!account || !localStorage.getItem('gps-token')) return;
@@ -828,6 +1371,17 @@ async function showAuthenticatedUi() {
         account.nombre = profile.nombre;
         account.promedioCalificacion = profile.promedioCalificacion;
         account.totalCalificaciones = profile.totalCalificaciones;
+        account.direccionCasa = profile.direccionCasa;
+        account.latCasa = profile.latCasa;
+        account.lngCasa = profile.lngCasa;
+        account.direccionTrabajo = profile.direccionTrabajo;
+        account.latTrabajo = profile.latTrabajo;
+        account.lngTrabajo = profile.lngTrabajo;
+        account.estadoVerificacion = profile.estadoVerificacion;
+        account.motivoRechazo = profile.motivoRechazo;
+        account.tieneLicencia = profile.tieneLicencia;
+        account.tieneSoat = profile.tieneSoat;
+        account.tieneTarjetaPropiedad = profile.tieneTarjetaPropiedad;
         localStorage.setItem('gps-user', JSON.stringify(account));
         if (!profile.telefono?.trim()) {
             window.alert('Tu cuenta no tiene teléfono registrado. Actualiza tu perfil para que puedan contactarte por celular.');
@@ -841,6 +1395,7 @@ async function showAuthenticatedUi() {
     updateWelcome(account);
     document.getElementById('passenger-panel').hidden = account.rol !== 'Pasajero';
     document.getElementById('driver-panel').hidden = account.rol !== 'Conductor';
+    actualizarInterfazVerificacionConductor(account);
     document.getElementById('open-admin-panel').hidden = account.rol !== 'Admin';
     document.getElementById('enable-notifications').textContent =
         sessionStorage.getItem('gps-fcm-token') ? 'Notificaciones activadas' : 'Activar notificaciones';
@@ -853,7 +1408,7 @@ async function showAuthenticatedUi() {
             const shouldConnect = localStorage.getItem('gps-driver-connected') === 'true'
                 && !activeTrip;
             await setDriverAvailability(shouldConnect);
-            await loadDriverEarnings();
+            await cargarBilletera();
         }
     } catch (error) {
         showMessage(appMessage, error.message);
@@ -886,8 +1441,8 @@ async function showAuthenticatedUi() {
                 ? getApp('gps-ride-messaging')
                 : initializeApp(firebaseConfig, 'gps-ride-messaging');
             fcmMessaging ??= getMessaging(firebaseApp);
-            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase/' });
-            const token = await getToken(fcmMessaging, { vapidKey, serviceWorkerRegistration: registration });
+            const swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase/' });
+            const token = await getToken(fcmMessaging, { vapidKey, serviceWorkerRegistration: swRegistration });
             if (!token) throw new Error('Firebase no devolvió un token para este navegador.');
 
             await api('/api/notificaciones/registrar-token', {
@@ -1074,6 +1629,38 @@ async function loadDriverEarnings() {
         formatCurrency(result.gananciasAcumuladas);
 }
 
+async function cargarBilletera() {
+    const [earnings, history] = await Promise.all([
+        api('/api/viajes/ganancias'),
+        api('/api/viajes/historial-conductor')
+    ]);
+    const formattedEarnings = formatCurrency(earnings.gananciasAcumuladas);
+    document.getElementById('driver-earnings-amount').textContent = formattedEarnings;
+    document.getElementById('wallet-total').textContent = formattedEarnings;
+
+    const rows = document.getElementById('wallet-trip-list');
+    rows.replaceChildren();
+    history.forEach((trip) => {
+        const row = document.createElement('tr');
+        const values = [
+            new Date(trip.fecha).toLocaleString('es-CO'),
+            formatCurrency(trip.montoTotal),
+            formatCurrency(trip.comision),
+            formatCurrency(trip.gananciaNeta)
+        ];
+        values.forEach((value) => {
+            const cell = document.createElement('td');
+            cell.textContent = value;
+            row.append(cell);
+        });
+        rows.append(row);
+    });
+
+    const hasHistory = history.length > 0;
+    document.getElementById('wallet-history-container').hidden = !hasHistory;
+    document.getElementById('wallet-empty').hidden = hasHistory;
+}
+
 function addAvailableRide(request) {
     if (!driverConnected || document.getElementById('driver-panel').hidden || request.id === activeTrip?.id) return;
     const container = document.getElementById('available-rides');
@@ -1230,13 +1817,27 @@ function showTrip(trip) {
 
 function estimatedTripDistance(trip) {
     const radians = (degrees) => degrees * Math.PI / 180;
-    const latitudeDelta = radians(trip.destinoLat - trip.origenLat);
-    const longitudeDelta = radians(trip.destinoLng - trip.origenLng);
-    const originLatitude = radians(trip.origenLat);
-    const destinationLatitude = radians(trip.destinoLat);
-    const haversine = Math.sin(latitudeDelta / 2) ** 2
-        + Math.cos(originLatitude) * Math.cos(destinationLatitude) * Math.sin(longitudeDelta / 2) ** 2;
-    return 2 * 6371 * Math.asin(Math.sqrt(haversine)) * 1.3;
+    const waypoints = [
+        { latitud: trip.origenLat, longitud: trip.origenLng },
+        ...(trip.paradas || [])
+            .slice()
+            .sort((first, second) => first.orden - second.orden),
+        { latitud: trip.destinoLat, longitud: trip.destinoLng }
+    ];
+    let distanceKm = 0;
+    for (let index = 1; index < waypoints.length; index++) {
+        const origin = waypoints[index - 1];
+        const destination = waypoints[index];
+        const latitudeDelta = radians(destination.latitud - origin.latitud);
+        const longitudeDelta = radians(destination.longitud - origin.longitud);
+        const originLatitude = radians(origin.latitud);
+        const destinationLatitude = radians(destination.latitud);
+        const haversine = Math.sin(latitudeDelta / 2) ** 2
+            + Math.cos(originLatitude) * Math.cos(destinationLatitude)
+            * Math.sin(longitudeDelta / 2) ** 2;
+        distanceKm += 2 * 6371 * Math.asin(Math.sqrt(haversine));
+    }
+    return distanceKm * 1.3;
 }
 
 function estimateRideMetrics(trip) {
@@ -1257,11 +1858,14 @@ function renderPassengerActiveTrip(trip) {
     const searchStatus = document.getElementById('passenger-search-status');
     const activeTripCard = document.getElementById('passenger-active-trip');
     const isSearching = trip.estado === 'Solicitado' && !trip.conductorId;
+    const showSafetyActions = ['Aceptado', 'EnCurso'].includes(trip.estado);
     const hasDriver = Boolean(trip.conductorId)
         && !['Cancelado', 'Finalizado'].includes(trip.estado);
 
     searchStatus.hidden = !isSearching;
     activeTripCard.hidden = !hasDriver;
+    document.getElementById('passenger-sos').hidden = !showSafetyActions;
+    document.getElementById('passenger-share-trip').hidden = !showSafetyActions;
     if (!hasDriver) {
         setDriverContact(null);
         document.getElementById('passenger-driver-call').removeAttribute('href');
@@ -1413,6 +2017,8 @@ function hideTrip() {
     document.getElementById('passenger-trip').hidden = true;
     document.getElementById('passenger-search-status').hidden = true;
     document.getElementById('passenger-active-trip').hidden = true;
+    document.getElementById('passenger-sos').hidden = true;
+    document.getElementById('passenger-share-trip').hidden = true;
     document.getElementById('cancel-ride').hidden = true;
     document.getElementById('driver-cancel-ride').hidden = true;
     document.getElementById('driver-trip').hidden = true;
@@ -1429,6 +2035,9 @@ function clearActiveTripUi() {
     if (routeControl) {
         routeControl.remove();
         routeControl = null;
+    }
+    for (const prefix of [...routeStops]) {
+        removeRouteStop(prefix);
     }
     if (driverMarker) {
         driverMarker.remove();
@@ -1473,19 +2082,28 @@ async function handleTripUpdate(trip) {
 function showRoute(trip) {
     const start = L.latLng(trip.origenLat, trip.origenLng);
     const end = L.latLng(trip.destinoLat, trip.destinoLng);
+    const orderedStops = [...(trip.paradas || [])]
+        .sort((first, second) => first.orden - second.orden)
+        .map((stop) => L.latLng(stop.latitud, stop.longitud));
+    const waypoints = [start, ...orderedStops, end];
+    routeWaypointCount = waypoints.length;
     if (!routeControl) {
         routeControl = L.Routing.control({
-            waypoints: [start, end],
+            waypoints,
             addWaypoints: false,
             draggableWaypoints: false,
             fitSelectedRoutes: true,
             show: false,
-            lineOptions: { styles: [{ color: '#123B63', opacity: 0.85, weight: 6 }] },
-            createMarker: (index, waypoint) => L.marker(waypoint.latLng)
-                .bindPopup(index === 0 ? 'Origen' : 'Destino')
+            lineOptions: { styles: [{ color: '#00b4d8', opacity: 0.9, weight: 6 }] },
+            createMarker: (index, waypoint) => {
+                const label = index === 0
+                    ? 'Origen'
+                    : index === routeWaypointCount - 1 ? 'Destino' : `Parada ${index}`;
+                return L.marker(waypoint.latLng, { icon: telemetryMarkerIcon }).bindPopup(label);
+            }
         }).addTo(map);
     } else {
-        routeControl.setWaypoints([start, end]);
+        routeControl.setWaypoints(waypoints);
     }
 }
 
@@ -1516,6 +2134,90 @@ document.getElementById('chat-form').addEventListener('submit', async (event) =>
     }
 });
 
+const promoCodeInput = document.getElementById('promo-code');
+const promoMessage = document.getElementById('promo-message');
+const promoEstimate = document.getElementById('promo-estimate');
+const promoEstimatedPrice = document.getElementById('promo-estimated-price');
+
+promoCodeInput.addEventListener('input', () => {
+    appliedPromo = null;
+    promoMessage.className = 'message';
+    promoMessage.textContent = '';
+    promoEstimate.hidden = true;
+});
+
+document.getElementById('apply-promo').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    const codigo = promoCodeInput.value.trim();
+    if (!codigo) {
+        promoMessage.className = 'message promo-feedback-error';
+        promoMessage.textContent = 'Escribe un código de descuento.';
+        return;
+    }
+
+    button.disabled = true;
+    promoMessage.className = 'message';
+    promoMessage.textContent = 'Validando cupón...';
+    try {
+        const result = await api('/api/viajes/validar-promo', {
+            method: 'POST',
+            body: JSON.stringify({ codigo })
+        });
+        appliedPromo = { codigo, porcentajeDescuento: result.porcentajeDescuento };
+        promoMessage.className = 'message promo-feedback-success';
+        promoMessage.textContent =
+            `¡Cupón aplicado! ${result.porcentajeDescuento}% de descuento`;
+
+        const estimate = calculatePromoEstimate(result.porcentajeDescuento);
+        promoEstimate.hidden = estimate === null;
+        if (estimate !== null) {
+            promoEstimatedPrice.textContent = new Intl.NumberFormat('es-CO', {
+                style: 'currency',
+                currency: 'COP',
+                maximumFractionDigits: 2
+            }).format(estimate);
+        }
+    } catch (error) {
+        appliedPromo = null;
+        promoEstimate.hidden = true;
+        promoMessage.className = 'message promo-feedback-error';
+        promoMessage.textContent = error.message;
+    } finally {
+        button.disabled = false;
+    }
+});
+
+function calculatePromoEstimate(porcentajeDescuento) {
+    const coordinateInputs = [
+        document.getElementById('origin-lat').value,
+        document.getElementById('origin-lng').value,
+        document.getElementById('destination-lat').value,
+        document.getElementById('destination-lng').value
+    ];
+    if (coordinateInputs.some((coordinate) => !coordinate.trim())) return null;
+
+    const coordinates = coordinateInputs.map(Number);
+    if (coordinates.some((coordinate) => !Number.isFinite(coordinate))) return null;
+
+    const stops = readRouteStops();
+    if (stops.some((stop) =>
+        !stop.input.value.trim()
+        || !stop.latitude.trim()
+        || !stop.longitude.trim()
+        || !Number.isFinite(Number(stop.latitude))
+        || !Number.isFinite(Number(stop.longitude)))) return null;
+
+    const [origenLat, origenLng, destinoLat, destinoLng] = coordinates;
+    const paradas = stops.map((stop, index) => ({
+        orden: index + 1,
+        latitud: Number(stop.latitude),
+        longitud: Number(stop.longitude)
+    }));
+    const distanceKm = estimatedTripDistance({ origenLat, origenLng, destinoLat, destinoLng, paradas });
+    const basePrice = Math.ceil((5000 + distanceKm * 1800) / 500) * 500;
+    return Math.round(basePrice * (100 - porcentajeDescuento)) / 100;
+}
+
 document.getElementById('request-ride').addEventListener('click', async () => {
     const button = document.getElementById('request-ride');
     const originInput = addressSearchFields.origin.input;
@@ -1523,6 +2225,7 @@ document.getElementById('request-ride').addEventListener('click', async () => {
     const originLng = document.getElementById('origin-lng').value;
     const destinationLat = document.getElementById('destination-lat').value;
     const destinationLng = document.getElementById('destination-lng').value;
+    const stops = readRouteStops();
     if (!originInput.value.trim() || !originLat || !originLng) {
         showMessage(appMessage, 'Selecciona un origen, usa tu ubicación actual o elige un punto en el mapa.');
         originInput.focus();
@@ -1533,18 +2236,38 @@ document.getElementById('request-ride').addEventListener('click', async () => {
         addressSearchFields.destination.input.focus();
         return;
     }
+    const incompleteStop = stops.find((stop) =>
+        !stop.input.value.trim() || !stop.latitude.trim() || !stop.longitude.trim()
+        || !Number.isFinite(Number(stop.latitude)) || !Number.isFinite(Number(stop.longitude)));
+    if (incompleteStop) {
+        showMessage(appMessage, 'Selecciona una dirección sugerida para cada parada.');
+        incompleteStop.input.focus();
+        return;
+    }
     const request = {
         origenLat: Number(originLat),
         origenLng: Number(originLng),
         destinoLat: Number(destinationLat),
         destinoLng: Number(destinationLng)
     };
+    if (stops.length) {
+        request.paradas = stops.map((stop) => ({
+            latitud: Number(stop.latitude),
+            longitud: Number(stop.longitude)
+        }));
+    }
+    if (appliedPromo) request.codigoPromo = appliedPromo.codigo;
     button.disabled = true;
     try {
         const trip = await api('/api/viajes/solicitar', {
             method: 'POST',
             body: JSON.stringify(request)
         });
+        appliedPromo = null;
+        promoCodeInput.value = '';
+        promoMessage.className = 'message';
+        promoMessage.textContent = '';
+        promoEstimate.hidden = true;
         activeTrip = trip;
         showTrip(trip);
         if (trip.pin) mostrarPin(trip.pin);
@@ -1736,7 +2459,7 @@ document.getElementById('use-location').addEventListener('click', () => {
             document.getElementById('origin-lng').value = coords.longitude;
             originInput.value = `Ubicación actual (${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)})`;
             if (addressMarkers.origin) addressMarkers.origin.remove();
-            addressMarkers.origin = L.marker([coords.latitude, coords.longitude])
+            addressMarkers.origin = L.marker([coords.latitude, coords.longitude], { icon: telemetryMarkerIcon })
                 .addTo(map)
                 .bindPopup('Tu ubicación actual');
             map.setView([coords.latitude, coords.longitude], 15);
@@ -1929,7 +2652,56 @@ if (localStorage.getItem('gps-token')) {
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js')
+        navigator.serviceWorker.register('/sw.js')
             .catch((error) => console.error('No se pudo registrar el Service Worker de la app:', error));
     });
 }
+
+const installAppSection = document.getElementById('install-app');
+const installAndroidButton = document.getElementById('install-android');
+const installAppleButton = document.getElementById('install-apple');
+const isIos = /iPad|iPhone|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+    || navigator.standalone === true;
+
+if (isStandalone) {
+    installAppSection.hidden = true;
+} else if (isIos) {
+    installAppSection.hidden = false;
+    installAppleButton.hidden = false;
+} else {
+    installAppSection.hidden = true;
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredPrompt = event;
+    if (!isStandalone && !isIos) {
+        installAppSection.hidden = false;
+        installAndroidButton.hidden = false;
+    }
+});
+
+installAndroidButton.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+
+    const installPrompt = deferredPrompt;
+    deferredPrompt = null;
+    try {
+        await installPrompt.prompt();
+        await installPrompt.userChoice;
+    } finally {
+        installAndroidButton.hidden = true;
+        installAppSection.hidden = true;
+    }
+});
+
+installAppleButton.addEventListener('click', () => {
+    window.alert('Para instalar en iPhone: Toca el botón Compartir (el cuadro con la flecha hacia arriba) en la parte inferior de Safari y selecciona Añadir a la pantalla de inicio');
+});
+
+window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    installAppSection.hidden = true;
+});

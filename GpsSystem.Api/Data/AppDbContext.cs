@@ -20,6 +20,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
 
     public DbSet<TokenNotificacion> TokensNotificacion => Set<TokenNotificacion>();
 
+    public DbSet<Promocion> Promociones => Set<Promocion>();
+
+    public DbSet<ParadaViaje> ParadasViaje => Set<ParadaViaje>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -60,6 +64,30 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             .Property(usuario => usuario.TotalCalificaciones)
             .HasDefaultValue(0);
 
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.DireccionCasa)
+            .HasMaxLength(300);
+
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.DireccionTrabajo)
+            .HasMaxLength(300);
+
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.UrlLicencia)
+            .HasMaxLength(64);
+
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.UrlSOAT)
+            .HasMaxLength(64);
+
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.UrlTarjetaPropiedad)
+            .HasMaxLength(64);
+
+        modelBuilder.Entity<Usuario>()
+            .Property(usuario => usuario.MotivoRechazo)
+            .HasMaxLength(500);
+
         modelBuilder.Entity<PerfilConductor>()
             .HasOne(perfil => perfil.Usuario)
             .WithOne(usuario => usuario.PerfilConductor)
@@ -84,6 +112,30 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
 
         modelBuilder.Entity<Viaje>()
             .HasIndex(viaje => new { viaje.Estado, viaje.FechaCreacion });
+
+        modelBuilder.Entity<Viaje>()
+            .HasOne(viaje => viaje.Promocion)
+            .WithMany()
+            .HasForeignKey(viaje => viaje.PromocionId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<ParadaViaje>()
+            .HasOne(parada => parada.Viaje)
+            .WithMany(viaje => viaje.Paradas)
+            .HasForeignKey(parada => parada.ViajeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ParadaViaje>()
+            .HasIndex(parada => new { parada.ViajeId, parada.Orden })
+            .IsUnique();
+
+        modelBuilder.Entity<Promocion>()
+            .Property(promocion => promocion.PorcentajeDescuento)
+            .HasPrecision(5, 2);
+
+        modelBuilder.Entity<Promocion>()
+            .HasIndex(promocion => promocion.Codigo)
+            .IsUnique();
 
         modelBuilder.Entity<Mensaje>()
             .HasOne(mensaje => mensaje.Viaje)

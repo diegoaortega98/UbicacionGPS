@@ -33,6 +33,16 @@ public sealed class ViajeHub : ViajeHubBase
 
         if (disponible)
         {
+            var conductorVerificado = await _dbContext.Users.AsNoTracking().AnyAsync(
+                usuario => usuario.Id == UsuarioId
+                    && usuario.Rol == RolesUsuario.Conductor
+                    && usuario.EstadoVerificacion == EstadoVerificacionConductor.Aprobado,
+                Context.ConnectionAborted);
+            if (!conductorVerificado)
+            {
+                throw new HubException("Debes tener tus documentos aprobados antes de conectarte.");
+            }
+
             await Groups.AddToGroupAsync(Context.ConnectionId, GrupoConductores);
             _conductoresActivos.EstablecerDisponibilidad(Context.ConnectionId, UsuarioId, true);
         }

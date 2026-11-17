@@ -1,6 +1,8 @@
 @GpsSystem.Api_HostAddress = http://localhost:5023
 @token = reemplaza-por-el-token-devuelto
 @viajeId = 00000000-0000-0000-0000-000000000000
+@promoCode = BIENVENIDA10
+@conductorId = reemplaza-por-el-id-del-conductor
 
 ### Registrar pasajero
 POST {{GpsSystem.Api_HostAddress}}/api/auth/register
@@ -35,6 +37,22 @@ Content-Type: application/json
 {
   "email": "pasajero@example.com",
   "password": "Cambiar-12345"
+}
+
+###
+
+### Guardar los lugares favoritos del usuario autenticado
+PUT {{GpsSystem.Api_HostAddress}}/api/auth/lugares-favoritos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "direccionCasa": "Casa, Cartagena, Colombia",
+  "latCasa": 10.391,
+  "lngCasa": -75.4794,
+  "direccionTrabajo": "Oficina, Cartagena, Colombia",
+  "latTrabajo": 10.412,
+  "lngTrabajo": -75.51
 }
 
 ###
@@ -86,7 +104,12 @@ Content-Type: application/json
   "origenLat": 10.391,
   "origenLng": -75.4794,
   "destinoLat": 10.405,
-  "destinoLng": -75.51
+  "destinoLng": -75.51,
+  "paradas": [
+    { "latitud": 10.398, "longitud": -75.49 },
+    { "latitud": 10.402, "longitud": -75.50 }
+  ],
+  "codigoPromo": "{{promoCode}}"
 }
 
 ###
@@ -109,9 +132,92 @@ Authorization: Bearer {{token}}
 
 ###
 
+### Historial de viajes finalizados (token de pasajero)
+GET {{GpsSystem.Api_HostAddress}}/api/viajes/historial-pasajero
+Authorization: Bearer {{token}}
+
+###
+
+### Estadísticas de viajes finalizados (token de pasajero)
+GET {{GpsSystem.Api_HostAddress}}/api/viajes/estadisticas-pasajero
+Authorization: Bearer {{token}}
+
+###
+
 ### Estadísticas administrativas (token de Admin)
 GET {{GpsSystem.Api_HostAddress}}/api/admin/estadisticas
 Authorization: Bearer {{token}}
+
+###
+
+### Crear código promocional (token de Admin)
+POST {{GpsSystem.Api_HostAddress}}/api/admin/promos
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "codigo": "{{promoCode}}",
+  "porcentajeDescuento": 10,
+  "fechaExpiracion": "2027-01-01T00:00:00Z"
+}
+
+###
+
+### Subir licencia de conductor (multipart/form-data)
+POST {{GpsSystem.Api_HostAddress}}/api/conductor/subir-documento
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=DocumentoBoundary
+
+--DocumentoBoundary
+Content-Disposition: form-data; name="tipoDocumento"
+
+Licencia
+--DocumentoBoundary
+Content-Disposition: form-data; name="archivo"; filename="licencia.pdf"
+Content-Type: application/pdf
+
+< ./licencia.pdf
+--DocumentoBoundary--
+
+###
+
+### Enviar los tres documentos a verificación (token de conductor)
+POST {{GpsSystem.Api_HostAddress}}/api/conductor/enviar-verificacion
+Authorization: Bearer {{token}}
+
+###
+
+### Listar conductores pendientes (token de Admin)
+GET {{GpsSystem.Api_HostAddress}}/api/admin/conductores-pendientes
+Authorization: Bearer {{token}}
+
+###
+
+### Aprobar conductor (token de Admin)
+POST {{GpsSystem.Api_HostAddress}}/api/admin/verificar-conductor/{{conductorId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "aprobado": true
+}
+
+###
+
+### Revisar licencia de conductor (token de Admin)
+GET {{GpsSystem.Api_HostAddress}}/api/admin/conductores/{{conductorId}}/documentos/Licencia
+Authorization: Bearer {{token}}
+
+###
+
+### Validar código promocional (token de pasajero)
+POST {{GpsSystem.Api_HostAddress}}/api/viajes/validar-promo
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "codigo": "{{promoCode}}"
+}
 
 ###
 

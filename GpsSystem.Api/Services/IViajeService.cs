@@ -25,6 +25,18 @@ public interface IViajeService
 
     Task<decimal> ObtenerGananciasAsync(string conductorId, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<HistorialViajeConductorResponse>> ObtenerHistorialConductorAsync(
+        string conductorId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<HistorialViajePasajeroResponse>> ObtenerHistorialPasajeroAsync(
+        string pasajeroId,
+        CancellationToken cancellationToken);
+
+    Task<EstadisticasPasajeroResponse> ObtenerEstadisticasPasajeroAsync(
+        string pasajeroId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<ViajeResponse>> ObtenerDisponiblesAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ViajeResponse>> ObtenerPropiosAsync(string usuarioId, string rol, CancellationToken cancellationToken);

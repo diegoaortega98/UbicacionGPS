@@ -42,6 +42,8 @@ public sealed class PasswordResetTests
             user.ResetCodeExpiration.Should().BeAfter(DateTime.UtcNow.AddMinutes(14));
             user.ResetCodeExpiration.Should().BeBefore(DateTime.UtcNow.AddMinutes(16));
         }
+        factory.Services.GetRequiredService<TestWebApplicationFactory.TestEmailService>()
+            .Correos.Should().ContainSingle(correo => correo.Email == email && correo.Codigo == resetCode);
 
         var invalidCode = resetCode == "000000" ? "000001" : "000000";
         using var invalidReset = await client.PostAsJsonAsync("/api/auth/reset-password", new
@@ -76,6 +78,11 @@ public sealed class PasswordResetTests
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             resetCode = (await dbContext.Users.SingleAsync(account => account.Email == email)).ResetCode!;
         }
+        var sentEmails = factory.Services
+            .GetRequiredService<TestWebApplicationFactory.TestEmailService>()
+            .Correos;
+        sentEmails.Should().HaveCount(2);
+        sentEmails.Should().Contain(correo => correo.Email == email && correo.Codigo == resetCode);
 
         using var successfulReset = await client.PostAsJsonAsync("/api/auth/reset-password", new
         {

@@ -14,6 +14,7 @@ namespace GpsSystem.Api.Controllers;
 [Route("api/viajes")]
 public class ViajesController(
     IViajeService viajeService,
+    IPromocionService promocionService,
     IHubContext<ViajeHub> viajeHub,
     NotificacionService notificacionService,
     UserManager<Usuario> userManager) : ControllerBase
@@ -39,11 +40,34 @@ public class ViajesController(
                 request.OrigenLat,
                 request.OrigenLng,
                 request.DestinoLat,
-                request.DestinoLng
+                request.DestinoLng,
+                paradas = solicitud.Paradas
             }, cancellationToken);
         await notificacionService.NotificarConductoresNuevaSolicitudAsync(
             solicitud.Id, solicitud.Precio, cancellationToken);
         return Created($"/api/viajes/{solicitud.Id}", solicitud);
+    }
+
+    [HttpPost("validar-promo")]
+    [Authorize(Roles = RolesUsuario.Pasajero)]
+    [ProducesResponseType<ValidarPromocionResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<ValidarPromocionResponse>> ValidarPromocion(
+        [FromBody] ValidarPromocionRequest request,
+        CancellationToken cancellationToken)
+    {
+        var promocion = await promocionService.ObtenerValidaAsync(request.Codigo, cancellationToken);
+        if (promocion is null)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "El código promocional no existe, está inactivo o expiró."
+            });
+        }
+
+        return Ok(new ValidarPromocionResponse(promocion.PorcentajeDescuento));
     }
 
     [HttpGet("disponibles")]
@@ -167,6 +191,27 @@ public class ViajesController(
     [Authorize(Roles = RolesUsuario.Conductor)]
     public async Task<ActionResult<GananciasResponse>> Ganancias(CancellationToken cancellationToken) =>
         Ok(new GananciasResponse(await viajeService.ObtenerGananciasAsync(UsuarioId(), cancellationToken)));
+
+    [HttpGet("historial-conductor")]
+    [Authorize(Roles = RolesUsuario.Conductor)]
+    [ProducesResponseType<IReadOnlyList<HistorialViajeConductorResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<HistorialViajeConductorResponse>>> HistorialConductor(
+        CancellationToken cancellationToken) =>
+        Ok(await viajeService.ObtenerHistorialConductorAsync(UsuarioId(), cancellationToken));
+
+    [HttpGet("historial-pasajero")]
+    [Authorize(Roles = RolesUsuario.Pasajero)]
+    [ProducesResponseType<IReadOnlyList<HistorialViajePasajeroResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<HistorialViajePasajeroResponse>>> HistorialPasajero(
+        CancellationToken cancellationToken) =>
+        Ok(await viajeService.ObtenerHistorialPasajeroAsync(UsuarioId(), cancellationToken));
+
+    [HttpGet("estadisticas-pasajero")]
+    [Authorize(Roles = RolesUsuario.Pasajero)]
+    [ProducesResponseType<EstadisticasPasajeroResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<EstadisticasPasajeroResponse>> EstadisticasPasajero(
+        CancellationToken cancellationToken) =>
+        Ok(await viajeService.ObtenerEstadisticasPasajeroAsync(UsuarioId(), cancellationToken));
 
     private async Task NotificarViajeAsync(ViajeResponse viaje, CancellationToken cancellationToken)
     {

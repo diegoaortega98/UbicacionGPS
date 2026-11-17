@@ -1,7 +1,14 @@
 :root {
-    font-family: Arial, Helvetica, sans-serif;
-    color: #233142;
-    background: #F4F6F8;
+    --tactical-background: #0a122a;
+    --tactical-panel: #131a33;
+    --tactical-accent: #00b4d8;
+    --tactical-success: #10b981;
+    --tactical-error: #ef4444;
+    --tactical-text: #e2e8f0;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    color: var(--tactical-text);
+    background: var(--tactical-background);
+    color-scheme: dark;
     font-synthesis: none;
 }
 
@@ -40,16 +47,11 @@ body,
     color: #fff;
 }
 
-.brand-mark {
-    display: grid;
-    width: 42px;
-    height: 42px;
-    place-items: center;
-    border-radius: 12px;
-    background: #fff;
-    color: #123B63;
-    font-size: 24px;
-    font-weight: 800;
+.app-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
 }
 
 .brand h1,
@@ -222,7 +224,8 @@ button:disabled {
 .profile-modal,
 .auth-modal,
 .history-modal,
-.rating-modal {
+.rating-modal,
+.driver-wallet-modal {
     width: min(440px, calc(100vw - 32px));
     max-height: calc(100vh - 32px);
     overflow: auto;
@@ -231,14 +234,119 @@ button:disabled {
     box-shadow: 0 12px 40px rgb(0 0 0 / 25%);
 }
 
+.forgot-password-hint {
+    margin: 0;
+    color: #536477;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 .history-modal,
 .rating-modal {
     width: min(560px, calc(100vw - 32px));
 }
 
+.passenger-history-modal {
+    width: min(680px, calc(100vw - 32px));
+}
+
+.driver-wallet-modal {
+    width: min(760px, calc(100vw - 32px));
+}
+
+.driver-documents-modal {
+    width: min(620px, calc(100vw - 32px));
+}
+
+.verification-banner {
+    margin: -4px 0 16px;
+    padding: 12px;
+    border: 1px solid #d32f2f;
+    border-radius: 8px;
+    background: #ffebee;
+    color: #b71c1c;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.verification-banner p,
+.driver-documents-rejection {
+    margin: 8px 0 0;
+}
+
+.driver-documents-status {
+    margin: 0 0 12px;
+    color: #123B63;
+    font-weight: 700;
+}
+
+.driver-documents-rejection {
+    color: #b71c1c;
+    font-size: 13px;
+}
+
+.driver-document-list {
+    display: grid;
+    gap: 12px;
+}
+
+.driver-document-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 6px 10px;
+    padding: 12px;
+    border: 1px solid #d5dee7;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.driver-document-item label {
+    min-width: 0;
+}
+
+.driver-document-item input[type="file"] {
+    min-width: 0;
+    padding: 7px;
+    font-size: 12px;
+}
+
+.driver-document-status {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: #647386;
+    font-size: 12px;
+}
+
 .history-modal {
     display: grid;
     gap: 10px;
+}
+
+.passenger-history-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.passenger-history-stat {
+    display: grid;
+    gap: 6px;
+    padding: 14px;
+    border: 1px solid #d5dee7;
+    border-radius: 9px;
+    background: #fff;
+}
+
+.passenger-history-stat span {
+    color: #647386;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.passenger-history-stat strong {
+    color: #123B63;
+    font-size: 22px;
 }
 
 .trip-history-list {
@@ -267,6 +375,60 @@ button:disabled {
 .profile-rating-summary {
     color: #8a6400;
     font-weight: 700;
+}
+
+.wallet-summary {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 16px;
+    padding: 18px;
+    border: 1px solid #cfe0d5;
+    border-radius: 10px;
+    background: #eaf5ee;
+    color: #285d3b;
+}
+
+.wallet-summary span {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.wallet-summary strong {
+    font-size: 28px;
+}
+
+.wallet-table-container {
+    max-height: 45vh;
+    overflow: auto;
+    border: 1px solid #d5dee7;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.wallet-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+}
+
+.wallet-table th,
+.wallet-table td {
+    padding: 10px;
+    border-bottom: 1px solid #e3e8ed;
+    white-space: nowrap;
+}
+
+.wallet-table th {
+    position: sticky;
+    top: 0;
+    background: #f4f6f8;
+    color: #123B63;
+}
+
+.wallet-withdrawal {
+    width: 100%;
+    margin-top: 16px;
 }
 
 .trip-rating-stars {
@@ -334,6 +496,48 @@ textarea {
     margin: -5px 0 16px;
 }
 
+.install-app {
+    margin: 0 20px 20px;
+    padding: 14px;
+    border: 1px solid #dce2e8;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.install-app h2 {
+    margin: 0 0 12px;
+    color: #123B63;
+    font-size: 15px;
+}
+
+.install-app-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.install-app-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid #123B63;
+    background: #fff;
+    color: #123B63;
+}
+
+.install-app-button:hover {
+    background: #123B63;
+    color: #fff;
+}
+
+.install-app[hidden],
+.install-app-button[hidden] {
+    display: none;
+}
+
 h3 {
     margin: 0 0 12px;
     color: #123B63;
@@ -350,6 +554,107 @@ h3 {
 .destination-search {
     position: relative;
     margin: 12px 0;
+}
+
+.route-stops-list {
+    display: grid;
+    gap: 4px;
+}
+
+.route-stop-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+}
+
+.route-stop-search {
+    min-width: 0;
+    margin: 8px 0;
+}
+
+.route-stop-remove {
+    margin-top: 22px;
+}
+
+.add-route-stop {
+    margin: 0 0 14px;
+}
+
+.favorite-place-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 0 0 14px;
+}
+
+.favorite-place-actions button {
+    min-width: 0;
+}
+
+.favorite-places-settings {
+    display: grid;
+    min-width: 0;
+    gap: 0;
+    margin: 4px 0;
+    padding: 8px 12px 12px;
+    border: 1px solid #d5dee7;
+    border-radius: 8px;
+}
+
+.favorite-places-settings legend {
+    padding: 0 6px;
+    color: #123B63;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.favorite-places-settings .hint {
+    margin: 0;
+}
+
+.favorite-address-field {
+    margin: 8px 0;
+}
+
+.promo-entry {
+    display: grid;
+    gap: 5px;
+    margin: 10px 0 14px;
+}
+
+.promo-entry > label {
+    color: #344356;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.promo-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+}
+
+.promo-input-row input {
+    min-width: 0;
+}
+
+.promo-input-row button {
+    min-width: 82px;
+}
+
+.message.promo-feedback-success {
+    color: #285d3b;
+}
+
+.message.promo-feedback-error {
+    color: #9c2c26;
+}
+
+.promo-estimate {
+    margin: 0;
+    color: #285d3b;
+    font-size: 13px;
 }
 
 .city-search {
@@ -419,6 +724,41 @@ h3 {
 
 .button-row button {
     flex: 1 1 auto;
+}
+
+.passenger-safety-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.passenger-safety-actions button {
+    min-height: 52px;
+    padding: 10px 8px;
+    white-space: normal;
+}
+
+.passenger-sos-button {
+    border: 2px solid #d32f2f;
+    background: #d32f2f;
+    color: #fff;
+    font-weight: 800;
+}
+
+.passenger-sos-button:hover {
+    border-color: #b71c1c;
+    background: #b71c1c;
+}
+
+.passenger-share-button {
+    border: 1px solid #123B63;
+    background: #123B63;
+    color: #fff;
+}
+
+.passenger-share-button:hover {
+    background: #194f80;
 }
 
 #request-ride {
@@ -858,5 +1198,374 @@ h3 {
     .contact-widget-toggle {
         right: 12px;
         bottom: 12px;
+    }
+}
+
+body {
+    background: var(--tactical-background);
+    color: var(--tactical-text);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.panel,
+.profile-modal,
+.auth-modal,
+.history-modal,
+.rating-modal,
+.driver-wallet-modal,
+.floating-contact-widget {
+    border: 1px solid rgb(255 255 255 / 10%);
+    border-radius: 16px;
+    background: rgb(19 26 51 / 75%);
+    box-shadow: 0 16px 48px rgb(0 0 0 / 40%);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    color: var(--tactical-text);
+}
+
+.panel {
+    overflow-x: hidden;
+}
+
+.brand,
+.contact-widget-header {
+    border-bottom: 1px solid rgb(255 255 255 / 10%);
+    background: rgb(10 18 42 / 88%);
+    color: #fff;
+}
+
+.app-logo {
+    filter: grayscale(1) brightness(0) invert(1);
+}
+
+.brand p,
+.contact-widget-header span {
+    color: #94a3b8;
+}
+
+.panel > .card {
+    background: transparent;
+    color: var(--tactical-text);
+}
+
+.tabs {
+    border-color: rgb(255 255 255 / 12%);
+}
+
+.tab {
+    color: #94a3b8;
+}
+
+.tab.active,
+h3,
+.user-heading h2,
+.profile-modal-header h2,
+.install-app h2,
+.favorite-places-settings legend,
+.text-link,
+.trip-history-rating,
+.profile-rating-summary,
+.ride-price,
+.driver-trip-price {
+    color: var(--tactical-accent);
+}
+
+label,
+.user-heading p,
+.hint,
+.forgot-password-hint,
+.destination-suggestion-empty,
+.driver-documents-status,
+.driver-document-status,
+.passenger-history-stat span,
+.payment-line {
+    color: #a8b5cb;
+}
+
+input,
+select,
+textarea {
+    border-color: rgb(255 255 255 / 16%);
+    background: rgb(10 18 42 / 82%);
+    color: var(--tactical-text);
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: #8492aa;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline-color: rgb(0 180 216 / 45%);
+    border-color: var(--tactical-accent);
+}
+
+button {
+    border-radius: 9px;
+}
+
+.primary,
+#request-ride {
+    border-color: var(--tactical-accent);
+    background: var(--tactical-accent);
+    box-shadow: 0 0 10px rgb(0 180 216 / 45%);
+    color: #061225;
+}
+
+.primary:hover:not(:disabled),
+#request-ride:hover:not(:disabled) {
+    background: #28c6e4;
+    color: #061225;
+}
+
+.secondary,
+.passenger-share-button {
+    border-color: rgb(255 255 255 / 16%);
+    background: rgb(30 41 68 / 88%);
+    color: var(--tactical-text);
+}
+
+.secondary:hover:not(:disabled),
+.passenger-share-button:hover {
+    border-color: var(--tactical-accent);
+    background: rgb(0 180 216 / 14%);
+    color: var(--tactical-text);
+}
+
+.text-link:hover {
+    color: #28c6e4;
+}
+
+.contact-widget-toggle {
+    border: 1px solid var(--tactical-accent);
+    background: var(--tactical-accent);
+    box-shadow: 0 0 12px rgb(0 180 216 / 45%);
+    color: #061225;
+}
+
+.danger,
+.passenger-sos-button {
+    border-color: var(--tactical-error);
+    background: var(--tactical-error);
+    box-shadow: 0 0 16px rgb(239 68 68 / 55%);
+    color: #fff;
+}
+
+.danger:hover:not(:disabled),
+.passenger-sos-button:hover {
+    border-color: #ff6262;
+    background: #ff4545;
+}
+
+.modal-backdrop {
+    background: rgb(3 8 22 / 78%);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+}
+
+.trip-summary,
+.ride-item,
+.passenger-history-stat,
+.trip-history-item,
+.wallet-table-container,
+.driver-document-item,
+.install-app,
+.favorite-places-settings,
+.destination-suggestions,
+.destination-suggestion,
+.chat-message,
+.driver-earnings {
+    border-color: rgb(255 255 255 / 10%);
+    background: rgb(19 26 51 / 88%);
+    color: var(--tactical-text);
+}
+
+.destination-suggestions {
+    box-shadow: 0 8px 24px rgb(0 0 0 / 38%);
+}
+
+.destination-suggestion {
+    border-bottom-color: rgb(255 255 255 / 8%);
+}
+
+.destination-suggestion:hover,
+.destination-suggestion:focus {
+    background: rgb(0 180 216 / 14%);
+}
+
+.wallet-summary,
+.promo-estimate {
+    border-color: rgb(16 185 129 / 35%);
+    background: rgb(16 185 129 / 12%);
+    color: var(--tactical-success);
+}
+
+.message.promo-feedback-success,
+.copy-feedback {
+    color: var(--tactical-success);
+}
+
+.message.promo-feedback-error,
+.message,
+.driver-documents-rejection {
+    color: var(--tactical-error);
+}
+
+.verification-banner {
+    border-color: rgb(239 68 68 / 65%);
+    background: rgb(239 68 68 / 12%);
+    color: #ff8b8b;
+}
+
+.driver-availability {
+    background: var(--tactical-success);
+    color: #04150f;
+}
+
+.driver-availability.is-connected {
+    background: var(--tactical-error);
+    color: #fff;
+}
+
+.payment-net,
+.passenger-history-stat strong,
+.wallet-summary strong {
+    color: var(--tactical-success);
+}
+
+.payment-net,
+.wallet-table th,
+.wallet-table td {
+    border-color: rgb(255 255 255 / 10%);
+}
+
+.wallet-table th {
+    background: #131a33;
+    color: var(--tactical-accent);
+}
+
+.trip-rating-stars .rating-star {
+    color: #65728a;
+}
+
+.trip-rating-stars .rating-star.is-selected,
+.trip-rating-stars .rating-star:hover {
+    color: #fbbf24;
+}
+
+.pin-banner {
+    border-color: var(--tactical-accent);
+    background: rgb(19 26 51 / 94%);
+    box-shadow: 0 0 28px rgb(0 180 216 / 35%);
+}
+
+.pin-banner span {
+    color: #a8b5cb;
+}
+
+.ride-passenger-name {
+    color: var(--tactical-text);
+}
+
+.ride-estimates,
+.chat-message small {
+    color: #a8b5cb;
+}
+
+.ride-avatar {
+    background: rgb(0 180 216 / 14%);
+    color: var(--tactical-accent);
+}
+
+.live-driver-marker,
+.telemetry-map-marker {
+    border: 2px solid #e2e8f0;
+    border-radius: 50%;
+    background: var(--tactical-accent);
+    box-shadow: 0 0 8px var(--tactical-accent), 0 0 18px rgb(0 180 216 / 75%);
+}
+
+.live-driver-marker {
+    animation: telemetry-pulse 1.8s ease-out infinite;
+}
+
+@keyframes telemetry-pulse {
+    0% { box-shadow: 0 0 0 0 rgb(0 180 216 / 65%), 0 0 12px var(--tactical-accent); }
+    70% { box-shadow: 0 0 0 12px rgb(0 180 216 / 0%), 0 0 12px var(--tactical-accent); }
+    100% { box-shadow: 0 0 0 0 rgb(0 180 216 / 0%), 0 0 12px var(--tactical-accent); }
+}
+
+.telemetry-status {
+    position: absolute;
+    z-index: 700;
+    top: 16px;
+    left: 50%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: calc(100vw - 32px);
+    padding: 10px 15px;
+    border: 1px solid rgb(255 255 255 / 12%);
+    border-radius: 999px;
+    background: rgb(19 26 51 / 82%);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    color: var(--tactical-text);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+    transform: translateX(-50%);
+}
+
+.telemetry-online {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.telemetry-online strong,
+.telemetry-status > span:nth-of-type(3) strong {
+    color: var(--tactical-accent);
+}
+
+.telemetry-indicator {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--tactical-success);
+    box-shadow: 0 0 8px var(--tactical-success);
+}
+
+.telemetry-divider {
+    color: #53617a;
+}
+
+.leaflet-bar a,
+.leaflet-bar a:hover,
+.leaflet-routing-container,
+.leaflet-routing-alt {
+    border-color: rgb(255 255 255 / 12%);
+    background: rgb(19 26 51 / 94%);
+    color: var(--tactical-text);
+}
+
+.leaflet-routing-container h2,
+.leaflet-routing-container h3 {
+    color: var(--tactical-text);
+}
+
+@media (max-width: 520px) {
+    .telemetry-status {
+        top: 12px;
+        left: auto;
+        right: 12px;
+        gap: 6px;
+        padding: 9px 10px;
+        font-size: 8px;
+        transform: none;
     }
 }
